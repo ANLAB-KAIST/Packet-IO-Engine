@@ -26,6 +26,7 @@ int devices_attached[MAX_DEVICES];
 struct ps_handle handles[MAX_CPUS];
 
 int my_cpu;
+int sink;
 
 int get_num_cpus()
 {
@@ -73,8 +74,9 @@ int bind_cpu(int cpu)
 
 void print_usage(char *argv0)
 {
-	fprintf(stderr, "Usage: %s <interface to echo> <...>",
+	fprintf(stderr, "Usage: %s [-s] <interface to echo> <...>\n",
 			argv0);
+	fprintf(stderr, "  -s option makes this program work as a sink\n");
 
 	exit(2);
 }
@@ -86,7 +88,12 @@ void parse_opt(int argc, char **argv)
 	if (argc < 2)
 		print_usage(argv[0]);
 
-	for (i = 1; i < argc; i++) {
+	if (strcmp(argv[1], "-s") == 0) {
+		sink = 1;
+		printf("just dropping incoming packets...\n");
+	}
+
+	for (i = 1 + sink; i < argc; i++) {
 		int ifindex = -1;
 
 		for (j = 0; j < num_devices; j++) {
@@ -200,11 +207,13 @@ void echo()
 
 	assert(ps_alloc_chunk(handle, &chunk) == 0);
 
-	chunk.cnt = 64;
 	chunk.recv_blocking = 1;
 
 	for (;;) {
-		int ret = ps_recv_chunk(handle, &chunk);
+		int ret;
+		
+		chunk.cnt = 64;
+		ret = ps_recv_chunk(handle, &chunk);
 
 		if (ret < 0) {
 			if (errno == EINTR)
@@ -216,10 +225,11 @@ void echo()
 			assert(0);
 		}
 
-		chunk.cnt = ret;
-		
-		ret = ps_send_chunk(handle, &chunk);
-		assert(ret >= 0);
+		if (!sink) {
+			chunk.cnt = ret;
+			ret = ps_send_chunk(handle, &chunk);
+			assert(ret >= 0);
+		}
 	}
 
 done:
