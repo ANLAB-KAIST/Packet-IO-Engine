@@ -1954,6 +1954,8 @@ static inline void _kc_skb_checksum_none_assert(struct sk_buff *skb)
 	WARN_ON(skb->ip_summed != CHECKSUM_NONE);
 }
 #define skb_checksum_none_assert(skb) _kc_skb_checksum_none_assert(skb)
+#else
+#define init_MUTEX(sem)         sema_init(sem, 1)
 #endif /* < 2.6.37 */
 
 #endif /* _KCOMPAT_H_ */

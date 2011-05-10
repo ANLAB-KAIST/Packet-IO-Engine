@@ -38,6 +38,7 @@ if os.getuid() != 0:
 
 if len(sys.argv) < 3:
 	print 'usage: %s <# of RX queues> <# of TX queues>' % sys.argv[0]
+	print '  You can specify 0 instead of the number of queues (one queue for each core)'
 	sys.exit(1)
 
 num_rx_queues = int(sys.argv[1])
