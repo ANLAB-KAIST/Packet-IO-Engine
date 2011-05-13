@@ -5013,6 +5013,10 @@ static int ixgbe_change_mtu(struct net_device *netdev, int new_mtu)
 	if ((new_mtu < 68) || (max_frame > IXGBE_MAX_JUMBO_FRAME_SIZE))
 		return -EINVAL;
 
+	/* sangjin: jumbo frame is not supported yet. */
+	if (max_frame > ETH_DATA_LEN)
+		return -EINVAL;
+
 	DPRINTK(PROBE, INFO, "changing MTU from %d to %d\n",
 	        netdev->mtu, new_mtu);
 	/* must set new MTU before calling down or up */

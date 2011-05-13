@@ -50,7 +50,7 @@ assert 0 <= num_rx_queues <= 16
 num_ifs = get_num_interfaces()
 num_cpus = get_num_cpus()
 
-execute('rmmod ps_ixgbe &> /dev/null')
+execute('lsmod | grep ps_ixgbe > /dev/null && sudo rmmod ps_ixgbe')
 execute('insmod ./ps_ixgbe.ko RXQ=%s TXQ=%s InterruptThrottleRate=%s' % 
 		(','.join([str(num_rx_queues)] * num_ifs),
 		 ','.join([str(num_tx_queues)] * num_ifs),
@@ -64,7 +64,7 @@ for i in range(num_ifs):
 	print 'setting %s...' % ifname,
 	
 	execute('ethtool -A %s autoneg off rx off tx off' % ifname)
-	execute('ifconfig %s 10.0.%d.%s netmask 255.255.255.0' % (ifname, i, postfix))
+	execute('ifconfig %s 10.0.%d.%s mtu 1500 netmask 255.255.255.0' % (ifname, i, postfix))
 
 	print 'OK'
 	print execute('./affinity.py %s' % ifname).strip()
