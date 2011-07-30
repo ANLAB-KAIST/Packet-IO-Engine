@@ -28,7 +28,8 @@ intrmap = execute('cat /proc/interrupts | grep %s-rx-' % ifname).strip().split('
 	
 for intr in intrmap:
 	irq = int(intr.split()[0][:-1])
-	queue = int(intr.split()[-1][-1])
+	name = intr.split()[-1]
+	queue = int(name[name.rfind('-') + 1:])
 
 	cpu = queue
 
