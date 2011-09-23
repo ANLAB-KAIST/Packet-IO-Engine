@@ -454,7 +454,6 @@ void print_usage(char *program)
 			"[-p <packet_size>] "
 			"[-f <num_flows>] "
 			"[-v <ip version>] "
-			"[-c <loop count>] "
 			"[-t <seconds>] "
 			"-i all|dev1 [-i dev2] ...\n",
 			program);
@@ -465,7 +464,6 @@ void print_usage(char *program)
 	fprintf(stderr, "  default <packet_size> is 60 (w/o 4-byte CRC)\n");
 	fprintf(stderr, "  default <num_flows> is 0 (0 = infinite)\n");
 	fprintf(stderr, "  default <ip version> is 4 (6 = ipv6)\n");
-	fprintf(stderr, "  default <loop count> is 1 (only valid for latency mesaurement)\n");
 	fprintf(stderr, "  default <seconds> is 0 (0 = infinite)\n");
 	exit(1);
 }
