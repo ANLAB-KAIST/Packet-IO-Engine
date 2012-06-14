@@ -1,9 +1,11 @@
+CFLAGS=-O2 -g -Wall -I../include
+
 .PHONY: clean
 
 all: pslib.a
 
 pslib.a: pslib.c
-	gcc -O2 -c -g -Wall -o pslib.o pslib.c
+	gcc $(CFLAGS) -c -o pslib.o pslib.c
 	ar rcs libps.a pslib.o
 
 clean:

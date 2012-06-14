@@ -1,2 +1,12 @@
 *.o
-*.pyc
+*.py(c|o)
+*.mod.c
+*.o.cmd
+*.o.d
+modules.order
+Module.symvers
+*.ko
+*.ko.cmd
+
+.tmp_versions/
+lib/libps.a

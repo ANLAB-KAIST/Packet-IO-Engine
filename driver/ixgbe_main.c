@@ -56,7 +56,7 @@
 
 
 #include "ixgbe.h"
-#include "../include/ps.h"
+#include "../include/pslib.h"
 
 /* disable features we don't need any more... - adaline*/
 #define IXGBE_NO_LRO	1
@@ -103,7 +103,6 @@ static struct pci_device_id ixgbe_pci_tbl[] = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_KX4)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_XAUI_LOM)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_SFP)},
-	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_T3_LOM)},
 	/* required last entry */
 	{0, }
 };
@@ -1007,7 +1006,7 @@ int ixgbe_xmit_batch(struct ixgbe_ring *tx_ring,
 	union ixgbe_adv_tx_desc *tx_desc = NULL;
 	int qidx, next_qidx; 
 	int i = 0;
-	int left, cnt;
+	int left, cnt, actual_cnt;
 	unsigned int total_bytes = 0;
 	u8 *dst;
 	
@@ -1058,8 +1057,13 @@ int ixgbe_xmit_batch(struct ixgbe_ring *tx_ring,
 	prefetchnta(dst + MAX_PACKET_SIZE * 6);
 	prefetchnta(dst + MAX_PACKET_SIZE * 7);
 	
+	actual_cnt = cnt;
 	for (i = 0; i < cnt; i++) {
 		int len = info[i].len;
+		if (info[i].offset == -1) { // skip
+			actual_cnt--;
+			continue;
+		}
 		
 		dst = packet_buf(tx_ring, qidx);
 
@@ -1098,9 +1102,9 @@ int ixgbe_xmit_batch(struct ixgbe_ring *tx_ring,
 
 	tx_ring->next_to_use = qidx;
 
-	tx_ring->total_packets += cnt;
+	tx_ring->total_packets += actual_cnt;
 	tx_ring->total_bytes += total_bytes;
-	tx_ring->stats.packets += cnt;
+	tx_ring->stats.packets += actual_cnt;
 	tx_ring->stats.bytes += total_bytes;
 
 	/*
@@ -5014,10 +5018,6 @@ static int ixgbe_change_mtu(struct net_device *netdev, int new_mtu)
 	if ((new_mtu < 68) || (max_frame > IXGBE_MAX_JUMBO_FRAME_SIZE))
 		return -EINVAL;
 
-	/* sangjin: jumbo frame is not supported yet. */
-	if (max_frame > ETH_DATA_LEN)
-		return -EINVAL;
-
 	DPRINTK(PROBE, INFO, "changing MTU from %d to %d\n",
 	        netdev->mtu, new_mtu);
 	/* must set new MTU before calling down or up */
@@ -6849,7 +6849,9 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 
 	/* do not use any advanced features :) - adaline */
 	netdev->features = 0;
+#ifdef HAVE_NETDEV_VLAN_FEATURES
 	netdev->vlan_features = 0;
+#endif
 
 	/* XXX: workaround for invalid numa node allocation */
 	adapter->numa_node = (pdev->bus->number & 0x80) ? 1 : 0;
@@ -7321,13 +7323,13 @@ int ps_list_devices(struct ps_device __user *devices_usr)
 	int i;
 	int n;
 
-	devices = kmalloc(sizeof(struct ps_device) * MAX_DEVICES, GFP_USER);
+	devices = kmalloc(sizeof(struct ps_device) * PS_MAX_DEVICES, GFP_USER);
 	if (!devices) {
 		printk(KERN_ERR "Allocation of devices failed\n");
 		return -ENOMEM;
 	}
 
-	n = min(MAX_DEVICES, adapters_found);
+	n = min(PS_MAX_DEVICES, adapters_found);
 
 	for (i = 0; i < n; i++) {
 		struct ixgbe_adapter *adapter = adapters[i];
@@ -7339,6 +7341,7 @@ int ps_list_devices(struct ps_device __user *devices_usr)
 		devices[i].kifindex = netdev->ifindex;
 		devices[i].num_rx_queues = adapter->num_rx_queues;
 		devices[i].num_tx_queues = adapter->num_tx_queues;
+		devices[i].numa_node = netdev->dev.numa_node;
 		memcpy(devices[i].dev_addr, netdev->dev_addr, ETH_ALEN);
 
 		devices[i].ip_addr = 0;
@@ -7740,16 +7743,25 @@ int ps_send_chunk(struct ps_context *context, struct ps_chunk __user *chunk_usr)
 	if (copy_from_user(&chunk, chunk_usr, sizeof(chunk)))
 		return -EFAULT;
 	
-	if (chunk.cnt <= 0 || chunk.cnt > MAX_CHUNK_SIZE)
+	if (chunk.cnt <= 0 || chunk.cnt > MAX_CHUNK_SIZE) {
+		printk("Out of range: cnt %d must be in the range [%d, %d].\n",
+		       chunk.cnt, 0, MAX_CHUNK_SIZE);
 		return -EINVAL;
+	}
 
-	if (chunk.queue.ifindex < 0 || chunk.queue.ifindex >= adapters_found)
+	if (chunk.queue.ifindex < 0 || chunk.queue.ifindex >= adapters_found) {
+		printk("Out of range: ifindex %d must be in the range [%d, %d].\n",
+		       chunk.queue.ifindex, 0, adapters_found);
 		return -EINVAL;
+	}
 
 	adapter = adapters[chunk.queue.ifindex];
 
-	if (chunk.queue.qidx < 0 || chunk.queue.qidx >= adapter->num_tx_queues)
+	if (chunk.queue.qidx < 0 || chunk.queue.qidx >= adapter->num_tx_queues) {
+		printk("Out of range: qidx %d must be in the range [%d, %d].\n",
+		       chunk.queue.qidx, 0, adapter->num_tx_queues);
 		return -EINVAL;
+	}
 
 	tx_ring = &adapter->tx_ring[chunk.queue.qidx];
 	
@@ -7788,21 +7800,26 @@ int ps_slowpath_packet(struct ps_context *context,
 	int ret;
 
 	if (copy_from_user(&pkt, pkt_usr, sizeof(pkt))) {
-		printk("1\n");
+		printk("copy_from_user() failed.\n");
 		return -EFAULT;
 	}
 
 	if (pkt.len < ETH_HLEN || pkt.len > ETH_FRAME_LEN) {
-		printk("2\n");
+		printk("wrong packet length (%d bytes).\n", pkt.len);
 		return -EINVAL;
 	}
 
-	if (pkt.ifindex < 0 || pkt.ifindex >= adapters_found) {
-		printk("3\n");
+	if (pkt.offset < 0 || pkt.offset > MAX_CHUNK_SIZE * MAX_PACKET_SIZE) {
+		printk("wrong packet offset. (%d byte)", pkt.offset);
 		return -EINVAL;
 	}
 
-	adapter = adapters[pkt.ifindex];
+	if (pkt.arrived_ifindex < 0 || pkt.arrived_ifindex >= adapters_found) {
+		printk("no such device. (ps ifindex %d)\n", pkt.arrived_ifindex);
+		return -EINVAL;
+	}
+
+	adapter = adapters[pkt.arrived_ifindex];
 	skb = netdev_alloc_skb(adapter->netdev, pkt.len + NET_IP_ALIGN);
 
 	if (skb == NULL) {
@@ -7812,7 +7829,7 @@ int ps_slowpath_packet(struct ps_context *context,
 
 	skb_reserve(skb, NET_IP_ALIGN);
 
-	ret = copy_from_user(skb->data, pkt.buf, pkt.len);
+	ret = copy_from_user(skb->data, pkt.buf + pkt.offset, pkt.len);
 	if (ret) {
 		dev_kfree_skb_any(skb);
 		printk("4 %d %d\n", ret, pkt.len);

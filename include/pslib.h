@@ -1,23 +1,59 @@
-#ifndef _PS_H_
-#define _PS_H_
+#ifndef __PSLIB_H__
+#define __PSLIB_H__
 
-#define MAX_DEVICES	16
-#define MAX_RINGS	64
+//#include "ps_common.h"
+#ifdef BEGIN_C_DECLS
+#undef BEGIN_C_DECLS
+#endif
+
+#ifdef END_C_DECLS
+#undef END_C_DECLS
+#endif
+
+#ifdef __cplusplus
+#define BEGIN_C_DECLS extern "C" {
+#define END_C_DECLS }
+#else
+#define BEGIN_C_DECLS
+#define END_C_DECLS
+#endif
+
+#ifndef ps_attr_align_64
+#define ps_attr_align_64	__attribute__((aligned (64)))
+#endif
+
+BEGIN_C_DECLS
+
+/*
+ * Constant for io_engine and corresponding libraries only
+ */
+enum {
+	PS_MAX_CPUS = 16,
+	PS_MAX_DEVICES = 16,
+	PS_MAX_queueS = 64,
+	PS_MAX_BUFS = 16,
+	PS_MAX_PACKET_SIZE = 2048,
+	PS_MAX_CHUNK_SIZE = 4096,
+
+	PS_CHECKSUM_RX_UNKNOWN = 0,
+	PS_CHECKSUM_RX_GOOD = 1,
+	PS_CHECKSUM_RX_BAD = 2,
+};
 
 #ifdef __KERNEL__
 
 #define PS_MAJOR 1010
 #define PS_NAME "packet_shader"
 
-#define MAX_BUFS 16
+#define MAX_BUFS 256
 
-struct ____cacheline_aligned ps_context {
+struct ps_attr_align_64 ps_context {
 	struct semaphore sem;
 
 	wait_queue_head_t wq;
 
 	int num_attached;
-	struct ixgbe_ring *rx_rings[MAX_RINGS];
+	struct ixgbe_ring *rx_rings[PS_MAX_queueS];
 	int next_ring;
 
 	struct ps_pkt_info *info;
@@ -29,10 +65,11 @@ struct ____cacheline_aligned ps_context {
 	char __user *ubufs[MAX_BUFS];
 };
 
-#else	/* __KERNEL__ */
+#else	/* end of __KERNEL__ */
 
-#include <string.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
 #include <linux/types.h>
 
 #define __user
@@ -85,6 +122,9 @@ struct ps_device {
 	/* This is kernel's ifindex. */
 	int kifindex;
 
+	/* The closest NUM node. */
+	int numa_node;
+
 	int num_rx_queues;
 	int num_tx_queues;
 };
@@ -101,32 +141,64 @@ struct ps_queue {
 #define PS_CHECKSUM_RX_GOOD	1
 #define PS_CHECKSUM_RX_BAD 	2
 
+/**
+ * Packet metadata for chunks.
+ * Note that this struct is copied everytime when it crosses the
+ * user/kernel boundary.
+ */
 struct ps_pkt_info {
-	uint32_t offset;
-	uint16_t len;
-	uint8_t checksum_rx;
+	int offset;
+	int len;
+	uint8_t checksum_rx; /** Stores the result of HW-assisted checksum. */
 };
 
+/**
+ * A memory-bound packet list with continuous buffer.
+ */
 struct ps_chunk {
-	/* number of packets to send/recv */
-	int cnt;
-	int recv_blocking;
 
-	/* 
-	   for RX: output (where did these packets come from?)
-	   for TX: input (which interface do you want to xmit?)
+	int cnt;		/** The number of packets to send/recv. */
+	int recv_blocking;	/** Indicates the blocking mode. */
+
+	/**
+	 * for RX: output (where did these packets come from?)
+	 * for TX: input (which interface do you want to xmit?)
 	 */
 	struct ps_queue queue;
 
+	/**
+	 * The list of packet metadata.
+	 */
 	struct ps_pkt_info __user *info;
+
+	/**
+	 * The continuous packet buffer for efficient I/O.
+	 * This is allocated using `mmap()` systemcall.
+	 */
 	char __user *buf;
+
+	int priv;  /** reserved for the pipeline implementation. */
 };
 
+/**
+ * Metadata for a specific packet, independently.
+ */
 struct ps_packet {
-	int ifindex;
+	int offset;
 	int len;
-	char __user *buf;
+	int arrived_ifindex;  /** Used for the slowpath. */
+	char __user *buf;  /** The pointer to the packet frame. */
+	int rx_idx;  /** rx_idx to find the RX/TX chunks. */
+	// TODO: module-specific annotations?
 };
+
+struct ps_neighbor {
+	uint8_t ethaddr[ETH_ALEN];
+	char ip_version;
+	uint8_t ipaddr[16];
+	int connected_ifindex;
+};
+
 
 static inline void prefetcht0(void *p)
 {
@@ -173,16 +245,17 @@ static inline void memcpy_aligned(void *to, const void *from, size_t len)
 struct ps_handle {
 	int fd;
 
-	uint64_t rx_chunks[MAX_DEVICES];
-	uint64_t rx_packets[MAX_DEVICES];
-	uint64_t rx_bytes[MAX_DEVICES];
+	uint64_t rx_chunks[PS_MAX_DEVICES];
+	uint64_t rx_packets[PS_MAX_DEVICES];
+	uint64_t rx_bytes[PS_MAX_DEVICES];
 
-	uint64_t tx_chunks[MAX_DEVICES];
-	uint64_t tx_packets[MAX_DEVICES];
-	uint64_t tx_bytes[MAX_DEVICES];
+	uint64_t tx_chunks[PS_MAX_DEVICES];
+	uint64_t tx_packets[PS_MAX_DEVICES];
+	uint64_t tx_bytes[PS_MAX_DEVICES];
 
 	void *priv;
 };
+
 
 int ps_list_devices(struct ps_device *devices);
 int ps_init_handle(struct ps_handle *handle);
@@ -195,13 +268,19 @@ int ps_recv_chunk(struct ps_handle *handle, struct ps_chunk *chunk);
 int ps_send_chunk(struct ps_handle *handle, struct ps_chunk *chunk);
 int ps_slowpath_packet(struct ps_handle *handle, struct ps_packet *packet);
 
-void dump_packet(char *buf, int len);
-void dump_chunk(struct ps_chunk *chunk);
+/**
+ * Make a "view" of the given chunk.
+ * The view chunk shares the buffer pointer, and may have its own packet
+ * information list.
+ */
+int ps_alloc_view_chunk(struct ps_chunk *view_chunk, struct ps_chunk *src_chunk, bool copy_info);
+int ps_free_view_chunk(struct ps_chunk *view_chunk);
 
-int get_num_cpus();
-int bind_cpu(int cpu);
-uint64_t rdtsc();
+int ps_to_psifindex(int kifindex);
+int ps_to_kifindex(int psifindex);
 
 #endif
 
-#endif	/* _PS_H_ */
+END_C_DECLS
+
+#endif	/* _PSLIB_H_ */
