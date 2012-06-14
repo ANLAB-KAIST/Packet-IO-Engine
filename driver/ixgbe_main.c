@@ -103,6 +103,7 @@ static struct pci_device_id ixgbe_pci_tbl[] = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_KX4)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_XAUI_LOM)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_SFP)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, IXGBE_DEV_ID_82599_T3_LOM)},
 	/* required last entry */
 	{0, }
 };
@@ -5016,6 +5017,10 @@ static int ixgbe_change_mtu(struct net_device *netdev, int new_mtu)
 
 	/* MTU < 68 is an error and causes problems on some kernels */
 	if ((new_mtu < 68) || (max_frame > IXGBE_MAX_JUMBO_FRAME_SIZE))
+		return -EINVAL;
+
+	/* sangjin: jumbo frame is not supported yet. */
+	if (max_frame > ETH_DATA_LEN)
 		return -EINVAL;
 
 	DPRINTK(PROBE, INFO, "changing MTU from %d to %d\n",
