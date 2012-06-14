@@ -1,12 +1,14 @@
 LIBS = -lps
 LIB_DIR = -L../../lib
+INC = -I../../include
+CFLAGS = -O2 -g -Wall $(INC)
 
 .PHONY: clean
 
 all: rxdump
 
 rxdump: rxdump.c
-	gcc -O2 -g -Wall -o rxdump rxdump.c $(LIB_DIR) $(LIBS)
+	gcc $(CFLAGS) -o rxdump rxdump.c $(LIB_DIR) $(LIBS)
 
 clean:
 	rm -f rxdump

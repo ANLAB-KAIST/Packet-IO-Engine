@@ -11,7 +11,7 @@
 #include <linux/udp.h>
 #include <linux/tcp.h>
 
-#include "../../include/ps.h"
+#include "pslib.h"
 
 void dump_packet(char *buf, int len)
 {
@@ -101,11 +101,11 @@ done:
 }
 
 int num_devices;
-struct ps_device devices[MAX_DEVICES];
+struct ps_device devices[PS_MAX_DEVICES];
 
 struct ps_handle handle;
 int num_devices_attached;
-int devices_attached[MAX_DEVICES];
+int devices_attached[PS_MAX_DEVICES];
 
 void print_usage(char *argv0)
 {
@@ -216,7 +216,7 @@ void dump()
 					chunk.queue.qidx);
 			dump_packet(chunk.buf + chunk.info[0].offset, chunk.info[0].len);
 
-			packet.ifindex = chunk.queue.ifindex;
+			packet.arrived_ifindex = chunk.queue.ifindex;
 			packet.len = chunk.info[0].len;
 			packet.buf = chunk.buf + chunk.info[0].offset;
 

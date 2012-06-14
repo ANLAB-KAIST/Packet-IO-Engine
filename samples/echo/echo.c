@@ -13,17 +13,17 @@
 #include <sys/wait.h>
 #include <numa.h>
 
-#include "../../include/ps.h"
+#include "pslib.h"
 
 #define MAX_CPUS 32
 
 int num_devices;
-struct ps_device devices[MAX_DEVICES];
+struct ps_device devices[PS_MAX_DEVICES];
 
 int num_devices_attached;
-int devices_attached[MAX_DEVICES];
+int devices_attached[PS_MAX_DEVICES];
 
-struct ps_handle handles[MAX_CPUS];
+struct ps_handle handles[PS_MAX_CPUS];
 
 int my_cpu;
 int sink;

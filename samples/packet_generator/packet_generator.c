@@ -17,7 +17,7 @@
 #include <sys/wait.h>
 #include <numa.h>
 
-#include "../../include/ps.h"
+#include "pslib.h"
 
 #include <linux/if_ether.h>
 #include <linux/ip.h>
@@ -55,10 +55,10 @@ int ip_version;
 int time_limit;
 
 int num_devices;
-struct ps_device devices[MAX_DEVICES];
+struct ps_device devices[PS_MAX_DEVICES];
 
 int num_devices_registered;
-int devices_registered[MAX_DEVICES];
+int devices_registered[PS_MAX_DEVICES];
 
 struct ps_handle handles[MAX_CPUS];
 
@@ -159,8 +159,8 @@ void update_stats(struct ps_handle *handle)
 
 	static long last_total_tx_packets = 0;
 	static long last_total_tx_bytes= 0;
-	static long last_device_tx_packets[MAX_DEVICES];
-	static long last_device_tx_bytes[MAX_DEVICES];
+	static long last_device_tx_packets[PS_MAX_DEVICES];
+	static long last_device_tx_bytes[PS_MAX_DEVICES];
 
 	long total_tx_packets = 0;
 	long total_tx_bytes = 0;
@@ -233,7 +233,7 @@ void update_stats(struct ps_handle *handle)
 	last_total_tx_packets = total_tx_packets;
 	last_total_tx_bytes = total_tx_bytes;
 
-	for (i = 0; i < MAX_DEVICES; i++) {
+	for (i = 0; i < PS_MAX_DEVICES; i++) {
 		last_device_tx_packets[i] = handle->tx_packets[i];
 		last_device_tx_bytes[i] = handle->tx_bytes[i];
 	}
@@ -365,11 +365,11 @@ void send_packets(long packets,
 {
 	struct ps_handle *handle = &handles[my_cpu];
 	struct ps_chunk chunk;
-	char packet[MAX_FLOWS][MAX_PACKET_SIZE];
+	char packet[MAX_FLOWS][PS_MAX_PACKET_SIZE];
 	int ret;
 
 	int i, j;
-	unsigned int next_flow[MAX_DEVICES];
+	unsigned int next_flow[PS_MAX_DEVICES];
 
 	long sent = 0;
 	uint64_t seed = 0;
@@ -497,7 +497,7 @@ int main(int argc, char **argv)
 			assert(num_packets >= 0);
 		} else if (!strcmp(argv[i], "-s")) {
 			chunk_size = atoi(argv[i + 1]);
-			assert(chunk_size >= 1 && chunk_size <= MAX_CHUNK_SIZE);
+			assert(chunk_size >= 1 && chunk_size <= PS_MAX_CHUNK_SIZE);
 		} else if (!strcmp(argv[i], "-p")) {
 			packet_size = atoi(argv[i + 1]);
 			assert(packet_size >= 60 && packet_size <= 1514);

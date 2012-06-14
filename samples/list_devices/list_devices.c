@@ -1,11 +1,11 @@
 #include <stdio.h>
 
-#include "../../include/ps.h"
+#include "pslib.h"
 
 int main()
 {
 	int num_devices;
-	struct ps_device devices[MAX_DEVICES];
+	struct ps_device devices[PS_MAX_DEVICES];
 
 	int i;
 

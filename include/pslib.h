@@ -134,9 +134,6 @@ struct ps_queue {
 	int qidx;
 };
 
-#define MAX_PACKET_SIZE	2048
-#define MAX_CHUNK_SIZE	4096
-
 #define PS_CHECKSUM_RX_UNKNOWN 	0
 #define PS_CHECKSUM_RX_GOOD	1
 #define PS_CHECKSUM_RX_BAD 	2
