@@ -30,7 +30,7 @@ BEGIN_C_DECLS
 enum {
 	PS_MAX_CPUS = 16,
 	PS_MAX_DEVICES = 16,
-	PS_MAX_queueS = 64,
+	PS_MAX_QUEUES = 64,
 	PS_MAX_BUFS = 16,
 	PS_MAX_PACKET_SIZE = 2048,
 	PS_MAX_CHUNK_SIZE = 4096,
@@ -53,7 +53,7 @@ struct ps_attr_align_64 ps_context {
 	wait_queue_head_t wq;
 
 	int num_attached;
-	struct ixgbe_ring *rx_rings[PS_MAX_queueS];
+	struct ixgbe_ring *rx_rings[PS_MAX_QUEUES];
 	int next_ring;
 
 	struct ps_pkt_info *info;
