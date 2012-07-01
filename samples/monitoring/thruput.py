@@ -11,6 +11,9 @@
 # To see the result values in a naturally sorted order, use Python 2.7
 # or higher (due to OrderedDict).
 
+# Note that this script may have some overheads, so please terminate it
+# when you do serious performance measurements requiring high accuracy.
+
 from __future__ import print_function
 import sys, os
 import time
