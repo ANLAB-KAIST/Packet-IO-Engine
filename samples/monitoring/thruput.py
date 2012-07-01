@@ -4,10 +4,10 @@
 # using ethtool. A fully utilized 10 Gbps link showes about 14.2M pps
 # with 64 B packets.
 
-# This script requires Python 3.x or higher.
+# The best environment for this script is Python 3.x or higher.
+# However, you can run it even on Python 2.6 depending on your system.
 # The primary reason to use 3.x versions is "," formatting of numbers.
-# If you do not need that, just don't use '-f' option and run this script
-# using Python 2.6 or higher.
+# If you do not need that, just don't use '-f' option.
 # To see the result values in a naturally sorted order, use Python 2.7
 # or higher (due to OrderedDict).
 
