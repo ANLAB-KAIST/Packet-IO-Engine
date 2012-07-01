@@ -11,7 +11,7 @@
 #include <linux/udp.h>
 #include <linux/tcp.h>
 
-#include "pslib.h"
+#include "psio.h"
 
 void dump_packet(char *buf, int len)
 {

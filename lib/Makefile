@@ -2,11 +2,16 @@ CFLAGS=-O2 -g -Wall -I../include
 
 .PHONY: clean
 
-all: pslib.a
+static: psio.c
+	rm -f psio.o
+	gcc $(CFLAGS) -c -o psio.o psio.c
+	ar rcs libpsio.a psio.o
 
-pslib.a: pslib.c
-	gcc $(CFLAGS) -c -o pslib.o pslib.c
-	ar rcs libps.a pslib.o
+shared: psio.c
+	rm -f psio.o
+	gcc $(CFLAGS) -fPIC -c -o psio.o psio.c
+	gcc -shared -Wl,-soname,libpsio.so.1 \
+	    -o libpsio.so.1.0.0 psio.o
 
 clean:
-	rm -f *.o *.a
+	rm -f *.o *.a *.so.*

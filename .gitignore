@@ -9,4 +9,10 @@ Module.symvers
 *.ko.cmd
 
 .tmp_versions/
-lib/libps.a
+lib/libpsio.a
+lib/libpsio.so.*
+
+samples/echo/echo
+samples/list_devices/list_devices
+samples/packet_generator/packet_generator
+samples/rxdump/rxdump

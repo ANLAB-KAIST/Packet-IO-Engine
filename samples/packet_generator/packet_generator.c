@@ -17,7 +17,7 @@
 #include <sys/wait.h>
 #include <numa.h>
 
-#include "pslib.h"
+#include "psio.h"
 
 #include <linux/if_ether.h>
 #include <linux/ip.h>

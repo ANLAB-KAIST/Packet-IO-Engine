@@ -14,7 +14,7 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 
-#include "pslib.h"
+#include "psio.h"
 
 static int k2ps_ifindex_map[PS_MAX_DEVICES];
 static struct ps_device device_list[PS_MAX_DEVICES];
@@ -90,7 +90,7 @@ int ps_alloc_chunk(struct ps_handle *handle, struct ps_chunk *chunk)
 void ps_free_chunk(struct ps_chunk *chunk)
 {
 	free(chunk->info);
-	munmap(chunk->buf, MAX_PACKET_SIZE * MAX_CHUNK_SIZE);
+	munmap(chunk->buf, PS_MAX_PACKET_SIZE * PS_MAX_CHUNK_SIZE);
 
 	chunk->info = NULL;
 	chunk->buf = NULL;
@@ -145,16 +145,16 @@ int ps_alloc_view_chunk(struct ps_chunk *view_chunk, struct ps_chunk *src_chunk,
 	memset(view_chunk, 0, sizeof(*view_chunk));
 
 	view_chunk->info = (struct ps_pkt_info *) malloc(
-			sizeof(struct ps_pkt_info) * MAX_CHUNK_SIZE);
+			sizeof(struct ps_pkt_info) * PS_MAX_CHUNK_SIZE);
 	if (!view_chunk->info)
 		return -1;
 
 	if (copy_info) {
-		memcpy(view_chunk->info, src_chunk->info, sizeof(struct ps_pkt_info) * MAX_CHUNK_SIZE);
+		memcpy(view_chunk->info, src_chunk->info, sizeof(struct ps_pkt_info) * PS_MAX_CHUNK_SIZE);
 		view_chunk->cnt = src_chunk->cnt;
 		view_chunk->queue = src_chunk->queue;
 	} else {
-		memset(view_chunk->info, 0, sizeof(struct ps_pkt_info) * MAX_CHUNK_SIZE);
+		memset(view_chunk->info, 0, sizeof(struct ps_pkt_info) * PS_MAX_CHUNK_SIZE);
 		view_chunk->cnt = 0;
 		view_chunk->queue.qidx = -1;
 		view_chunk->queue.ifindex = -1;

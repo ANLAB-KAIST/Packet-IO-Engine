@@ -1,4 +1,4 @@
-LIBS = -lps -lnuma
+LIBS = -lpsio -lnuma
 LIB_DIR = -L../../lib
 INC = -I../../include
 CFLAGS = -O2 -g -Wall $(INC)

@@ -1,5 +1,5 @@
-#ifndef __PSLIB_H__
-#define __PSLIB_H__
+#ifndef __PSIO_H__
+#define __PSIO_H__
 
 //#include "ps_common.h"
 #ifdef BEGIN_C_DECLS
@@ -280,4 +280,4 @@ int ps_to_kifindex(int psifindex);
 
 END_C_DECLS
 
-#endif	/* _PSLIB_H_ */
+#endif	/* __PSIO_H__ */

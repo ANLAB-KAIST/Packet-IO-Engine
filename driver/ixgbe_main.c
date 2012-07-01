@@ -56,7 +56,7 @@
 
 
 #include "ixgbe.h"
-#include "../include/pslib.h"
+#include "../include/psio.h"
 
 /* disable features we don't need any more... - adaline*/
 #define IXGBE_NO_LRO	1

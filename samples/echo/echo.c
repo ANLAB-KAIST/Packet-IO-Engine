@@ -13,7 +13,7 @@
 #include <sys/wait.h>
 #include <numa.h>
 
-#include "pslib.h"
+#include "psio.h"
 
 #define MAX_CPUS 32
 

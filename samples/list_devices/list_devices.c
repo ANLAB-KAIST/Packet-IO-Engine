@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "pslib.h"
+#include "psio.h"
 
 int main()
 {
