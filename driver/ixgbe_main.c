@@ -554,13 +554,13 @@ static inline void ixgbe_release_rx_desc(struct ixgbe_hw *hw,
 static inline u8 *packet_buf(struct ixgbe_ring *ring, int i)
 {
 	return ring->window[i >> IXGBE_SUBWINDOW_BITS] +
-			(i & IXGBE_SUBWINDOW_MASK) * MAX_PACKET_SIZE;
+			(i & IXGBE_SUBWINDOW_MASK) * PS_MAX_PACKET_SIZE;
 }
 
 static inline u64 packet_dma(struct ixgbe_ring *ring, int i)
 {
 	return ring->dma_window[i >> IXGBE_SUBWINDOW_BITS] +
-			(i & IXGBE_SUBWINDOW_MASK) * MAX_PACKET_SIZE;
+			(i & IXGBE_SUBWINDOW_MASK) * PS_MAX_PACKET_SIZE;
 }
 
 /**
@@ -1049,14 +1049,14 @@ int ixgbe_xmit_batch(struct ixgbe_ring *tx_ring,
 	prefetchnta(buf + info[0].offset + 64 * 2);
 	prefetchnta(buf + info[0].offset + 64 * 3);
 
-	prefetchnta(dst + MAX_PACKET_SIZE * 0);
-	prefetchnta(dst + MAX_PACKET_SIZE * 1);
-	prefetchnta(dst + MAX_PACKET_SIZE * 2);
-	prefetchnta(dst + MAX_PACKET_SIZE * 3);
-	prefetchnta(dst + MAX_PACKET_SIZE * 4);
-	prefetchnta(dst + MAX_PACKET_SIZE * 5);
-	prefetchnta(dst + MAX_PACKET_SIZE * 6);
-	prefetchnta(dst + MAX_PACKET_SIZE * 7);
+	prefetchnta(dst + PS_MAX_PACKET_SIZE * 0);
+	prefetchnta(dst + PS_MAX_PACKET_SIZE * 1);
+	prefetchnta(dst + PS_MAX_PACKET_SIZE * 2);
+	prefetchnta(dst + PS_MAX_PACKET_SIZE * 3);
+	prefetchnta(dst + PS_MAX_PACKET_SIZE * 4);
+	prefetchnta(dst + PS_MAX_PACKET_SIZE * 5);
+	prefetchnta(dst + PS_MAX_PACKET_SIZE * 6);
+	prefetchnta(dst + PS_MAX_PACKET_SIZE * 7);
 	
 	actual_cnt = cnt;
 	for (i = 0; i < cnt; i++) {
@@ -1069,7 +1069,7 @@ int ixgbe_xmit_batch(struct ixgbe_ring *tx_ring,
 		dst = packet_buf(tx_ring, qidx);
 
 		prefetchnta(&tx_ring->tx_buffer_info[qidx + 8]);
-		prefetchnta(dst + MAX_PACKET_SIZE * 8);
+		prefetchnta(dst + PS_MAX_PACKET_SIZE * 8);
 		prefetchnta(buf + info[i].offset + 64 * 4);
 
 		next_qidx = (qidx + 1) % tx_ring->count;
@@ -4712,7 +4712,7 @@ int ixgbe_setup_tx_resources(struct ixgbe_adapter *adapter,
 	tx_ring->work_limit = tx_ring->count;
 #endif
 
-	size = ALIGN(IXGBE_SUBWINDOW_SIZE * MAX_PACKET_SIZE, 4096);
+	size = ALIGN(IXGBE_SUBWINDOW_SIZE * PS_MAX_PACKET_SIZE, 4096);
 	tx_ring->window_size = size;
 
 	for (i = 0; i <= (tx_ring->count - 1) / IXGBE_SUBWINDOW_SIZE; i++) {
@@ -4831,7 +4831,7 @@ int ixgbe_setup_rx_resources(struct ixgbe_adapter *adapter,
 
 	rx_ring->queued = 0;
 
-	size = ALIGN(IXGBE_SUBWINDOW_SIZE * MAX_PACKET_SIZE, 4096);
+	size = ALIGN(IXGBE_SUBWINDOW_SIZE * PS_MAX_PACKET_SIZE, 4096);
 	rx_ring->window_size = size;
 
 	for (i = 0; i <= (rx_ring->count - 1) / IXGBE_SUBWINDOW_SIZE; i++) {
@@ -7097,9 +7097,10 @@ bool ixgbe_is_ixgbe(struct pci_dev *pcidev)
 		return true;
 }
 
-#if MAX_PACKET_SIZE * MAX_CHUNK_SIZE % PAGE_SIZE != 0
-#error must be a multiple of PAGE_SIZE!
-#endif
+// PS_MAX_* constants are now constants, not macro definitions.
+//#if PS_MAX_PACKET_SIZE * PS_MAX_CHUNK_SIZE % PAGE_SIZE != 0
+//#error must be a multiple of PAGE_SIZE!
+//#endif
 
 int ps_open(struct inode *inode, struct file *filp)
 {
@@ -7114,7 +7115,7 @@ int ps_open(struct inode *inode, struct file *filp)
 
 	memset(context, 0, sizeof(struct ps_context));
 
-	context->info = kmalloc_node(sizeof(struct ps_pkt_info) * MAX_CHUNK_SIZE, 
+	context->info = kmalloc_node(sizeof(struct ps_pkt_info) * PS_MAX_CHUNK_SIZE, 
 			GFP_USER, numa_node_id());
 	if (!context->info) {
 		printk(KERN_ERR "Allocation of ps_context->info failed\n");
@@ -7225,7 +7226,7 @@ void ps_vma_close(struct vm_area_struct *vma)
 		char *addr;
 		int size;
 
-		size = PAGE_ALIGN(MAX_PACKET_SIZE * MAX_CHUNK_SIZE);
+		size = PAGE_ALIGN(PS_MAX_PACKET_SIZE * PS_MAX_CHUNK_SIZE);
 		addr = context->kbufs[i];
 
 		while (size > 0) {
@@ -7271,7 +7272,7 @@ int ps_mmap(struct file *filp, struct vm_area_struct *vma)
 		return -ENOMEM;
 	}
 
-	size = PAGE_ALIGN(MAX_PACKET_SIZE * MAX_CHUNK_SIZE);
+	size = PAGE_ALIGN(PS_MAX_PACKET_SIZE * PS_MAX_CHUNK_SIZE);
 	buf = vmalloc_node(size, numa_node_id());
 
 	if (!buf) {
@@ -7539,10 +7540,10 @@ int copy_rx_packets(struct ixgbe_ring *rx_ring,
 	prefetchnta(IXGBE_RX_DESC_ADV(*rx_ring, qidx + 0));
 	prefetchnta(IXGBE_RX_DESC_ADV(*rx_ring, qidx + 1));
 	
-	prefetchnta(src + MAX_PACKET_SIZE * 0);
-	prefetchnta(src + MAX_PACKET_SIZE * 1);
-	prefetchnta(src + MAX_PACKET_SIZE * 2);
-	prefetchnta(src + MAX_PACKET_SIZE * 3);
+	prefetchnta(src + PS_MAX_PACKET_SIZE * 0);
+	prefetchnta(src + PS_MAX_PACKET_SIZE * 1);
+	prefetchnta(src + PS_MAX_PACKET_SIZE * 2);
+	prefetchnta(src + PS_MAX_PACKET_SIZE * 3);
 
 	while (cnt < n) {
 		rx_desc = IXGBE_RX_DESC_ADV(*rx_ring, qidx);
@@ -7550,9 +7551,9 @@ int copy_rx_packets(struct ixgbe_ring *rx_ring,
 
 		src = packet_buf(rx_ring, qidx);
 
-		prefetchnta(src + MAX_PACKET_SIZE * 4);
+		prefetchnta(src + PS_MAX_PACKET_SIZE * 4);
 		if (len > 64)
-			prefetchnta(src + MAX_PACKET_SIZE * 4 + 64);
+			prefetchnta(src + PS_MAX_PACKET_SIZE * 4 + 64);
 
 		prefetchnta(rx_desc + 2);
 		prefetcht0(pkt_buf + offset + 64 * 2);
@@ -7574,7 +7575,7 @@ int copy_rx_packets(struct ixgbe_ring *rx_ring,
 
 		len = le16_to_cpu(rx_desc->wb.upper.length);
 
-		if (unlikely(len > MAX_PACKET_SIZE)) {
+		if (unlikely(len > PS_MAX_PACKET_SIZE)) {
 			printk("invalid packet length!\n");
 			goto next;
 		}
@@ -7645,7 +7646,7 @@ int ps_recv_chunk(struct ps_context *context, struct ps_chunk __user *chunk_usr)
 			chunk.cnt, chunk.info, chunk.buf);
 	*/
 
-	if (chunk.cnt <= 0 || chunk.cnt > MAX_CHUNK_SIZE)
+	if (chunk.cnt <= 0 || chunk.cnt > PS_MAX_CHUNK_SIZE)
 		return -EINVAL;
 
 	if (!access_ok(VERIFY_WRITE, chunk.info, 
@@ -7748,9 +7749,9 @@ int ps_send_chunk(struct ps_context *context, struct ps_chunk __user *chunk_usr)
 	if (copy_from_user(&chunk, chunk_usr, sizeof(chunk)))
 		return -EFAULT;
 	
-	if (chunk.cnt <= 0 || chunk.cnt > MAX_CHUNK_SIZE) {
+	if (chunk.cnt <= 0 || chunk.cnt > PS_MAX_CHUNK_SIZE) {
 		printk("Out of range: cnt %d must be in the range [%d, %d].\n",
-		       chunk.cnt, 0, MAX_CHUNK_SIZE);
+		       chunk.cnt, 0, PS_MAX_CHUNK_SIZE);
 		return -EINVAL;
 	}
 
@@ -7814,7 +7815,7 @@ int ps_slowpath_packet(struct ps_context *context,
 		return -EINVAL;
 	}
 
-	if (pkt.offset < 0 || pkt.offset > MAX_CHUNK_SIZE * MAX_PACKET_SIZE) {
+	if (pkt.offset < 0 || pkt.offset > PS_MAX_CHUNK_SIZE * PS_MAX_PACKET_SIZE) {
 		printk("wrong packet offset. (%d byte)", pkt.offset);
 		return -EINVAL;
 	}
