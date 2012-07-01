@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# This script requires Python 2.6 or higher.
 
 from __future__ import print_function, with_statement
 import os
