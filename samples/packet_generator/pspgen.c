@@ -620,7 +620,7 @@ void send_packets(long packets,
 			}
 
 			if (latency_measure) {
-				for (j = 0; j < chunk_size; j++) {
+				for (j = 0; j < chunk.cnt; j++) {
 					char *ptr = chunk.buf + (chunk.info[j].offset + payload_offset);
 					*((uint32_t *)ptr) = magic_number;
 					*((uint64_t *)(ptr + 4)) = ps_rdtsc();
