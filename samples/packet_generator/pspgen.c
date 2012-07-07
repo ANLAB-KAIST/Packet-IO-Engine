@@ -21,9 +21,8 @@
 #include <sys/socket.h>
 #include <numa.h>
 #include <pthread.h>
-//#include <arpa/inet.h>
-//#include <netinet/in.h>
 
+#include <netinet/ether.h>
 #include <linux/if_ether.h>
 #include <linux/ip.h>
 #include <linux/ipv6.h>
@@ -491,6 +490,7 @@ void send_packets(long packets,
 
 	int i, j;
 	unsigned int next_flow[PS_MAX_DEVICES];
+	char strbuf[128];
 
 	long sent = 0;
 	uint64_t seed = 0;
@@ -612,20 +612,10 @@ void send_packets(long packets,
 				memcpy(eth->h_source, devices[chunk.queue.ifindex].dev_addr, ETH_ALEN);
 				if (debug) {
 					printf("len %d %d eth_hlen %ld ", packet_size, chunk.info[j].len, sizeof(struct ethhdr));
-					printf("src %02x:%02x:%02x:%02x:%02x:%02x ",
-							eth->h_source[0],
-							eth->h_source[1],
-							eth->h_source[2],
-							eth->h_source[3],
-							eth->h_source[4],
-							eth->h_source[5]);
-					printf("dst %02x:%02x:%02x:%02x:%02x:%02x\n",
-							eth->h_dest[0],
-							eth->h_dest[1],
-							eth->h_dest[2],
-							eth->h_dest[3],
-							eth->h_dest[4],
-							eth->h_dest[5]);
+					ether_ntoa_r((struct ether_addr *) eth->h_source, strbuf);
+					printf("src %s ", strbuf);
+					ether_ntoa_r((struct ether_addr *) eth->h_dest, strbuf);
+					printf("dst %s\n", strbuf);
 				}
 			}
 
@@ -810,17 +800,12 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 	num_neighbors = 0;
+	char *eth_straddr = (char *)malloc(sizeof(char) * 32);
 	char *ipv4_straddr = (char *)malloc(sizeof(char) * INET_ADDRSTRLEN);
 	char *ipv6_straddr = (char *)malloc(sizeof(char) * INET6_ADDRSTRLEN);
 	if (ip_version == 4) {
-		while (EOF != fscanf(f, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx %s",
-				&neighbor_ethaddrs[num_neighbors][0],
-				&neighbor_ethaddrs[num_neighbors][1],
-				&neighbor_ethaddrs[num_neighbors][2],
-				&neighbor_ethaddrs[num_neighbors][3],
-				&neighbor_ethaddrs[num_neighbors][4],
-				&neighbor_ethaddrs[num_neighbors][5],
-				ipv4_straddr) && num_neighbors < PS_MAX_DEVICES) {
+		while (EOF != fscanf(f, "%s %s", eth_straddr, ipv4_straddr) && num_neighbors < PS_MAX_DEVICES) {
+			assert(NULL != ether_aton_r(eth_straddr, (struct ether_addr *) &neighbor_ethaddrs[num_neighbors]));
 
 			// Note: inet_addr() is defined in the glibc header netinet/in.h, but this header
 			// conflicts with the kernel header linux/ipv6.h.
@@ -829,19 +814,14 @@ int main(int argc, char **argv)
 			num_neighbors++;
 		}
 	} else if (ip_version == 6) {
-		while (EOF != fscanf(f, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx %s",
-				&neighbor_ethaddrs[num_neighbors][0],
-				&neighbor_ethaddrs[num_neighbors][1],
-				&neighbor_ethaddrs[num_neighbors][2],
-				&neighbor_ethaddrs[num_neighbors][3],
-				&neighbor_ethaddrs[num_neighbors][4],
-				&neighbor_ethaddrs[num_neighbors][5],
-				ipv6_straddr) && num_neighbors < PS_MAX_DEVICES) {
+		while (EOF != fscanf(f, "%s %s", eth_straddr, ipv6_straddr) && num_neighbors < PS_MAX_DEVICES) {
+			assert(NULL != ether_aton_r(eth_straddr, (struct ether_addr *) &neighbor_ethaddrs[num_neighbors]));
 
 			// TODO: implement IP address parsing.
 			num_neighbors++;
 		}
 	}
+	free(eth_straddr);
 	free(ipv4_straddr);
 	free(ipv6_straddr);
 	fclose(f);
