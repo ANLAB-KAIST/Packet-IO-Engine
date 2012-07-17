@@ -24,11 +24,6 @@
 #include <linux/ipv6.h>
 #include <linux/udp.h>
 
-#define MAX_CPUS	32
-
-#define ALIGN(x,a)              __ALIGN_MASK(x,(typeof(x))(a)-1)
-#define __ALIGN_MASK(x,mask)    (((x)+(mask))&~(mask))
-
 
 #define IPPROTO_UDP		17
 #define HTONS(n) (((((unsigned short)(n) & 0xFF)) << 8) | (((unsigned short)(n) & 0xFF00) >> 8))
@@ -60,7 +55,7 @@ struct ps_device devices[PS_MAX_DEVICES];
 int num_devices_registered;
 int devices_registered[PS_MAX_DEVICES];
 
-struct ps_handle handles[MAX_CPUS];
+struct ps_handle handles[PS_MAX_CPUS];
 
 void done()
 {
@@ -403,7 +398,7 @@ void send_packets(long packets,
 
 			for (j = 0; j < chunk_size; j++) {
 				chunk.info[j].len = packet_size;
-				chunk.info[j].offset = j * ALIGN(packet_size, 64);
+				chunk.info[j].offset = j * PS_ALIGN(packet_size, 64);
 
 				if (num_flows == 0){
 					if (ip_version == 4){

@@ -73,11 +73,19 @@ struct ps_attr_align_64 ps_context {
 #include <linux/types.h>
 
 #define __user
+#ifndef IFNAMSIZ
 #define IFNAMSIZ 16
+#endif
+#ifndef ETH_ALEN
 #define ETH_ALEN 6
+#endif
 
-#define ALIGN(x,a)              __ALIGN_MASK(x,(typeof(x))(a)-1)
-#define __ALIGN_MASK(x,mask)    (((x)+(mask))&~(mask))
+#ifdef __cplusplus
+#define PS_ALIGN(x,a)              __PS_ALIGN_MASK(x,(decltype(x))(a)-1)
+#else
+#define PS_ALIGN(x,a)              __PS_ALIGN_MASK(x,(typeof(x))(a)-1)
+#endif
+#define __PS_ALIGN_MASK(x,mask)    (((x)+(mask))&~(mask))
 
 static inline __sum16 ip_fast_csum(const void *iph, unsigned int ihl)
 {

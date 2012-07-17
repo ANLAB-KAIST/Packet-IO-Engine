@@ -35,9 +35,6 @@
 #define INET6_ADDRSTRLEN	46
 #define ETH_EXTRA_BYTES	24  // preamble, padding bytes
 
-#define ALIGN(x,a)              __ALIGN_MASK(x,(typeof(x))(a)-1)
-#define __ALIGN_MASK(x,mask)    (((x)+(mask))&~(mask))
-
 
 #define IPPROTO_UDP		17
 #define HTONS(n) (((((unsigned short)(n) & 0xFF)) << 8) | (((unsigned short)(n) & 0xFF00) >> 8))
@@ -581,7 +578,7 @@ void send_packets(long packets,
 			/* Fill the chunk with packets generated. */
 			for (j = 0; j < chunk.cnt; j++) {
 				chunk.info[j].len = packet_size;
-				chunk.info[j].offset = j * ALIGN(packet_size, 64);
+				chunk.info[j].offset = j * PS_ALIGN(packet_size, 64);
 
 				if (num_flows == 0) {
 					if (ip_version == 4) {
