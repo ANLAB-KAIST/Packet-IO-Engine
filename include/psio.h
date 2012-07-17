@@ -10,6 +10,8 @@
 #undef END_C_DECLS
 #endif
 
+#define CHECK_CXX0X (defined __cplusplus && (__cplusplus > 199711L || defined __GXX_EXPERIMENTAL_CXX0X__))
+
 #ifdef __cplusplus
 #define BEGIN_C_DECLS extern "C" {
 #define END_C_DECLS }
@@ -21,6 +23,14 @@
 #ifndef ps_attr_align_64
 #define ps_attr_align_64	__attribute__((aligned (64)))
 #endif
+
+#if CHECK_CXX0X
+#define PS_ALIGN(x,a)              __PS_ALIGN_MASK(x,(decltype(x))(a)-1)
+#else
+#define PS_ALIGN(x,a)              __PS_ALIGN_MASK(x,(typeof(x))(a)-1)
+#endif
+#define __PS_ALIGN_MASK(x,mask)    (((x)+(mask))&~(mask))
+
 
 BEGIN_C_DECLS
 
@@ -79,13 +89,6 @@ struct ps_attr_align_64 ps_context {
 #ifndef ETH_ALEN
 #define ETH_ALEN 6
 #endif
-
-#ifdef __cplusplus
-#define PS_ALIGN(x,a)              __PS_ALIGN_MASK(x,(decltype(x))(a)-1)
-#else
-#define PS_ALIGN(x,a)              __PS_ALIGN_MASK(x,(typeof(x))(a)-1)
-#endif
-#define __PS_ALIGN_MASK(x,mask)    (((x)+(mask))&~(mask))
 
 static inline __sum16 ip_fast_csum(const void *iph, unsigned int ihl)
 {
