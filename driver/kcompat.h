@@ -209,6 +209,7 @@ struct msix_entry {
 #define __read_mostly
 #endif
 
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,40) )
 #ifndef HAVE_NETIF_MSG
 #define HAVE_NETIF_MSG 1
 enum {
@@ -233,6 +234,7 @@ enum {
 #define NETIF_MSG_HW	0x2000
 #define NETIF_MSG_WOL	0x4000
 #endif /* HAVE_NETIF_MSG */
+#endif
 
 #ifndef MII_RESV1
 #define MII_RESV1		0x17		/* Reserved...		*/
@@ -1627,9 +1629,11 @@ extern struct net_device *napi_to_poll_dev(struct napi_struct *napi);
 #endif /* < 2.6.24 */
 
 /*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,40) )
 #if ( LINUX_VERSION_CODE > KERNEL_VERSION(2,6,24) )
 #include <linux/pm_qos_params.h>
 #endif /* > 2.6.24 */
+#endif
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25) )
@@ -1957,5 +1961,118 @@ static inline void _kc_skb_checksum_none_assert(struct sk_buff *skb)
 #else
 #define init_MUTEX(sem)	sema_init(sem, 1)
 #endif /* < 2.6.37 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,1,0) )
+#ifndef __netdev_alloc_skb_ip_align
+#define __netdev_alloc_skb_ip_align(d,l,_g) netdev_alloc_skb_ip_align(d,l)
+#endif /* __netdev_alloc_skb_ip_align */
+#define dcb_ieee_setapp(dev, app) dcb_setapp(dev, app)
+#define dcb_ieee_delapp(dev, app) 0
+#define dcb_ieee_getapp_mask(dev, app) (1 << app->priority)
+#else /* < 3.1.0 */
+#ifndef HAVE_DCBNL_IEEE_DELAPP
+#define HAVE_DCBNL_IEEE_DELAPP
+#endif
+#endif /* < 3.1.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0) )
+
+
+
+#ifdef ETHTOOL_GRXRINGS
+#define HAVE_ETHTOOL_GET_RXNFC_VOID_RULE_LOCS
+#endif /* ETHTOOL_GRXRINGS */
+
+#ifndef skb_frag_size
+#define skb_frag_size(frag)	_kc_skb_frag_size(frag)
+static inline unsigned int _kc_skb_frag_size(const skb_frag_t *frag)
+{
+	return frag->size;
+}
+#endif /* skb_frag_size */
+
+#ifndef skb_frag_size_sub
+#define skb_frag_size_sub(frag, delta)	_kc_skb_frag_size_sub(frag, delta)
+static inline void _kc_skb_frag_size_sub(skb_frag_t *frag, int delta)
+{
+	frag->size -= delta;
+}
+#endif /* skb_frag_size_sub */
+
+#ifndef skb_frag_page
+#define skb_frag_page(frag)	_kc_skb_frag_page(frag)
+static inline struct page *_kc_skb_frag_page(const skb_frag_t *frag)
+{
+	return frag->page;
+}
+#endif /* skb_frag_page */
+
+#ifndef skb_frag_address
+#define skb_frag_address(frag)	_kc_skb_frag_address(frag)
+static inline void *_kc_skb_frag_address(const skb_frag_t *frag)
+{
+	return page_address(skb_frag_page(frag)) + frag->page_offset;
+}
+#endif /* skb_frag_address */
+
+#ifndef skb_frag_dma_map
+#define skb_frag_dma_map(dev,frag,offset,size,dir) \
+		_kc_skb_frag_dma_map(dev,frag,offset,size,dir)
+static inline dma_addr_t _kc_skb_frag_dma_map(struct device *dev,
+					      const skb_frag_t *frag,
+					      size_t offset, size_t size,
+					      enum dma_data_direction dir)
+{
+	return dma_map_page(dev, skb_frag_page(frag),
+			    frag->page_offset + offset, size, dir);
+}
+#endif /* skb_frag_dma_map */
+
+#ifndef __skb_frag_unref
+#define __skb_frag_unref(frag) __kc_skb_frag_unref(frag)
+static inline void __kc_skb_frag_unref(skb_frag_t *frag)
+{
+	put_page(skb_frag_page(frag));
+}
+#endif /* __skb_frag_unref */
+
+#ifndef SPEED_UNKNOWN
+#define SPEED_UNKNOWN	-1
+#endif
+#ifndef DUPLEX_UNKNOWN
+#define DUPLEX_UNKNOWN	0xff
+#endif
+#else /* < 3.2.0 */
+#ifndef HAVE_PCI_DEV_FLAGS_ASSIGNED
+#define HAVE_PCI_DEV_FLAGS_ASSIGNED
+#define HAVE_VF_SPOOFCHK_CONFIGURE
+#endif
+#endif /* < 3.2.0 */
+
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0) )
+typedef u32 netdev_features_t;
+
+#define HAVE_NET_DEVICE_OPS
+
+#ifndef ETHTOOL_MAX_NTUPLE_LIST_ENTRY
+#define ETHTOOL_MAX_NTUPLE_LIST_ENTRY 1024
+#endif
+
+#ifndef ETHTOOL_MAX_NTUPLE_STRING_PER_ENTRY
+#define ETHTOOL_MAX_NTUPLE_STRING_PER_ENTRY 14
+#endif
+
+#else /* ! < 3.3.0 */
+#define HAVE_INT_NDO_VLAN_RX_ADD_VID
+#ifdef ETHTOOL_SRXNTUPLE
+#undef ETHTOOL_SRXNTUPLE
+#endif
+#endif /* < 3.3.0 */
+
+
 
 #endif /* _KCOMPAT_H_ */

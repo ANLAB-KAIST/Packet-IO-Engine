@@ -2861,9 +2861,9 @@ static void ixgbe_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
 
 	if (!test_bit(__IXGBE_DOWN, &adapter->state))
 		ixgbe_irq_disable(adapter);
-
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,40) )
 	vlan_group_set_device(adapter->vlgrp, vid, NULL);
-
+#endif
 	if (!test_bit(__IXGBE_DOWN, &adapter->state))
 		ixgbe_irq_enable(adapter, true, true);
 	/* remove VID from filter table */
@@ -2892,8 +2892,10 @@ static void ixgbe_restore_vlan(struct ixgbe_adapter *adapter)
 	if (adapter->vlgrp) {
 		u16 vid;
 		for (vid = 0; vid < VLAN_N_VID; vid++) {
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,40) )
 			if (!vlan_group_get_device(adapter->vlgrp, vid))
 				continue;
+#endif
 			ixgbe_vlan_rx_add_vid(adapter->netdev, vid);
 		}
 	}
@@ -6381,7 +6383,9 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_start_xmit		= &ixgbe_xmit_frame_ps,
 	.ndo_get_stats		= &ixgbe_get_stats,
 	.ndo_set_rx_mode	= &ixgbe_set_rx_mode,
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,0,0) )
 	.ndo_set_multicast_list	= &ixgbe_set_rx_mode,
+#endif
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_set_mac_address	= &ixgbe_set_mac,
 	.ndo_change_mtu		= &ixgbe_change_mtu,
@@ -6389,7 +6393,11 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_do_ioctl		= &ixgbe_ioctl,
 #endif
 	.ndo_tx_timeout		= &ixgbe_tx_timeout,
-	.ndo_vlan_rx_register	= &ixgbe_vlan_rx_register,
+
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,0,0) )
+	ndo_vlan_rx_register	= &ixgbe_vlan_rx_register,
+#endif
+
 	.ndo_vlan_rx_add_vid	= &ixgbe_vlan_rx_add_vid,
 	.ndo_vlan_rx_kill_vid	= &ixgbe_vlan_rx_kill_vid,
 #ifdef CONFIG_NET_POLL_CONTROLLER
