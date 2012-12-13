@@ -2247,7 +2247,9 @@ static struct ethtool_ops ixgbe_ethtool_ops = {
 #endif /* HAVE_ETHTOOL_GET_SSET_COUNT */
 	.self_test              = ixgbe_diag_test,
 	.get_strings            = ixgbe_get_strings,
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,0,0) )
 	.phys_id                = ixgbe_phys_id,
+#endif
 #ifndef HAVE_ETHTOOL_GET_SSET_COUNT
 	.get_stats_count        = ixgbe_get_stats_count,
 #else /* HAVE_ETHTOOL_GET_SSET_COUNT */
