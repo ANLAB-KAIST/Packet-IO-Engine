@@ -7835,7 +7835,7 @@ int ps_slowpath_packet(struct ps_context *context,
 
 	skb_reserve(skb, NET_IP_ALIGN);
 
-	ret = copy_from_user(skb->data, pkt.buf + pkt.offset, pkt.len);
+	ret = copy_from_user(skb->data, pkt.buf, pkt.len);
 	if (ret) {
 		dev_kfree_skb_any(skb);
 		printk("4 %d %d\n", ret, pkt.len);
