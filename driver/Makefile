@@ -55,6 +55,7 @@ KSP :=  /lib/modules/$(BUILD_KERNEL)/build \
         /usr/src/linux-$($(BUILD_KERNEL) | sed 's/-.*//') \
         /usr/src/kernel-headers-$(BUILD_KERNEL) \
         /usr/src/kernel-source-$(BUILD_KERNEL) \
+        /usr/src/linux-source-$(BUILD_KERNEL) \
         /usr/src/linux-$($(BUILD_KERNEL) | sed 's/\([0-9]*\.[0-9]*\)\..*/\1/') \
         /usr/src/linux
 
@@ -176,19 +177,34 @@ ifneq ($(KSRC),$(shell readlink /lib/modules/$(KVER)/build))
 endif
 endif
 
-KKVER := $(shell echo $(KVER) | \
-         awk '{ if ($$0 ~ /2\.[4-9]\./) print "1"; else print "0"}')
-ifeq ($(KKVER), 0)
+#KKVER := $(shell echo $(KVER) | \
+#         awk '{ if ($$0 ~ /2\.[4-9]\./) print "1"; else print "0"}')
+#ifeq ($(KKVER), 0)
+#  $(error *** Aborting the build. \
+#          *** This driver is not supported on kernel versions older than 2.4.0)
+#endif
+#
+## Add DCB netlink source if our kernel is 2.6.23 or newer
+#KKVER := $(shell echo $(KVER) | \
+#         awk '{ if ($$0 ~ /2\.[6-9]\.(2[3-9]|[3-9][0-9])/) print "1"; else print "0"}')
+#ifeq ($(KKVER), 1)
+#  CFILES += ixgbe_dcb_nl.c
+#endif
+
+# From ixgbe 3.X
+KVER_CODE := $(shell $(CC) $(EXTRA_CFLAGS) -E -dM $(VSP) 2>/dev/null |\
+    grep -m 1 LINUX_VERSION_CODE | awk '{ print $$3 }' | sed 's/\"//g')
+# abort the build on kernels older than 2.4.0
+ifneq (1,$(shell [ $(KVER_CODE) -ge 132096 ] && echo 1 || echo 0))
   $(error *** Aborting the build. \
           *** This driver is not supported on kernel versions older than 2.4.0)
 endif
 
 # Add DCB netlink source if our kernel is 2.6.23 or newer
-KKVER := $(shell echo $(KVER) | \
-         awk '{ if ($$0 ~ /2\.[6-9]\.(2[3-9]|[3-9][0-9])/) print "1"; else print "0"}')
-ifeq ($(KKVER), 1)
+ifeq (1,$(shell [ $(KVER_CODE) -ge 132631 ] && echo 1 || echo 0))
   CFILES += ixgbe_dcb_nl.c
 endif
+# 3.X
 
 # Add FCoE source if FCoE is supported by the kernel
 FCOE := $(shell grep -wE 'CONFIG_FCOE|CONFIG_FCOE_MODULE' $(CONFIG_FILE) | \
@@ -232,8 +248,8 @@ endif
 
 K_VERSION:=$(shell echo $(BUILD_KERNEL) | cut -c1-3 | sed 's/2\.[56]/2\.6/')
 
-ifeq ($(K_VERSION), 2.6)
-
+#ifeq ($(K_VERSION), 2.6)
+ifeq (1,$(shell [ $(KVER_CODE) -ge 132096 ] && echo 1 || echo 0))
 # Makefile for 2.6.x kernel
 TARGET = $(DRIVER_NAME).ko
 
@@ -255,7 +271,6 @@ endif
 endif
 
 else # ifeq ($(K_VERSION),2.6)
-
 # Makefile for 2.4.x kernel
 TARGET = $(DRIVER_NAME).o
 
