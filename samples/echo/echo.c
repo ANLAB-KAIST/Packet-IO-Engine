@@ -35,26 +35,27 @@ int get_num_cpus()
 
 int bind_cpu(int cpu)
 {
-        cpu_set_t *cmask;
+	cpu_set_t *cmask;
 	struct bitmask *bmask;
-	size_t n;
+	size_t ncpu, setsize;
 	int ret;
 
-	n = get_num_cpus();
+	ncpu = get_num_cpus();
 
-        if (cpu < 0 || cpu >= (int)n) {
+	if (cpu < 0 || cpu >= (int)ncpu) {
 		errno = -EINVAL;
 		return -1;
 	}
 
-	cmask = CPU_ALLOC(n);
+	cmask = CPU_ALLOC(ncpu);
 	if (cmask == NULL)
 		return -1;
 
-        CPU_ZERO_S(n, cmask);
-        CPU_SET_S(cpu, n, cmask);
+	setsize = CPU_ALLOC_SIZE(ncpu);
+	CPU_ZERO_S(setsize, cmask);
+	CPU_SET_S(cpu, setsize, cmask);
 
-        ret = sched_setaffinity(0, n, cmask);
+	ret = sched_setaffinity(0, ncpu, cmask);
 
 	CPU_FREE(cmask);
 
