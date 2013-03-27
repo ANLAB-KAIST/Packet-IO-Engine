@@ -7572,19 +7572,19 @@ int copy_rx_packets(struct ixgbe_ring *rx_ring,
 			break;
 		
 		if (unlikely(!(staterr & IXGBE_RXD_STAT_EOP))) {
-			printk("found non-EOP packets!\n");
+			if (printk_ratelimit()) printk(KERN_WARNING "found non-EOP packets!\n");
 			goto next;
 		}
 
 		if (unlikely(staterr & IXGBE_RXDADV_ERR_FRAME_ERR_MASK)) {
-			printk("found error frames\n");
+			if (printk_ratelimit()) printk(KERN_NOTICE "found error frames\n");
 			goto next;
 		}
 
 		len = le16_to_cpu(rx_desc->wb.upper.length);
 
 		if (unlikely(len > PS_MAX_PACKET_SIZE)) {
-			printk("invalid packet length!\n");
+			if (printk_ratelimit()) printk(KERN_NOTICE "invalid packet length!\n");
 			goto next;
 		}
 
@@ -7654,8 +7654,10 @@ int ps_recv_chunk(struct ps_context *context, struct ps_chunk __user *chunk_usr)
 			chunk.cnt, chunk.info, chunk.buf);
 	*/
 
-	if (chunk.cnt <= 0 || chunk.cnt > PS_MAX_CHUNK_SIZE)
+	if (chunk.cnt <= 0 || chunk.cnt > PS_MAX_CHUNK_SIZE) {
+		if (printk_ratelimit()) printk(KERN_NOTICE "invalid chunk size.\n");
 		return -EINVAL;
+	}
 
 	if (!access_ok(VERIFY_WRITE, chunk.info, 
 			chunk.cnt * sizeof(struct ps_pkt_info)))
@@ -7670,8 +7672,10 @@ int ps_recv_chunk(struct ps_context *context, struct ps_chunk __user *chunk_usr)
 	if (!kbuf)
 		return -EFAULT;
 
-	if (context->num_attached == 0)
+	if (context->num_attached == 0) {
+		if (printk_ratelimit()) printk(KERN_WARNING "no attached devices.\n");
 		return -EINVAL;
+	}
 
 	offset = ALIGN((u64)kbuf, 64) - (u64)kbuf;
 
@@ -7758,22 +7762,22 @@ int ps_send_chunk(struct ps_context *context, struct ps_chunk __user *chunk_usr)
 		return -EFAULT;
 	
 	if (chunk.cnt <= 0 || chunk.cnt > PS_MAX_CHUNK_SIZE) {
-		printk("Out of range: cnt %d must be in the range [%d, %d].\n",
-		       chunk.cnt, 0, PS_MAX_CHUNK_SIZE);
+		if (printk_ratelimit()) printk(KERN_NOTICE "Out of range: cnt %d must be in the range [%d, %d].\n",
+							   chunk.cnt, 0, PS_MAX_CHUNK_SIZE);
 		return -EINVAL;
 	}
 
 	if (chunk.queue.ifindex < 0 || chunk.queue.ifindex >= adapters_found) {
-		printk("Out of range: ifindex %d must be in the range [%d, %d].\n",
-		       chunk.queue.ifindex, 0, adapters_found);
+		if (printk_ratelimit()) printk(KERN_NOTICE "Out of range: ifindex %d must be in the range [%d, %d].\n",
+							   chunk.queue.ifindex, 0, adapters_found);
 		return -EINVAL;
 	}
 
 	adapter = adapters[chunk.queue.ifindex];
 
 	if (chunk.queue.qidx < 0 || chunk.queue.qidx >= adapter->num_tx_queues) {
-		printk("Out of range: qidx %d must be in the range [%d, %d].\n",
-		       chunk.queue.qidx, 0, adapter->num_tx_queues);
+		if (printk_ratelimit()) printk(KERN_NOTICE "Out of range: qidx %d must be in the range [%d, %d].\n",
+							   chunk.queue.qidx, 0, adapter->num_tx_queues);
 		return -EINVAL;
 	}
 
@@ -7782,9 +7786,9 @@ int ps_send_chunk(struct ps_context *context, struct ps_chunk __user *chunk_usr)
 	ret = copy_from_user(context->info, chunk.info,
 			chunk.cnt * sizeof(struct ps_pkt_info));
 	if (ret) {
-		printk("copy_from_user(1) failed - %ld requested %d failed\n",
-				chunk.cnt * sizeof(struct ps_pkt_info),
-				ret);
+		printk(KERN_ERR "copy_from_user(1) failed - %ld requested %d failed.\n",
+			        chunk.cnt * sizeof(struct ps_pkt_info),
+			        ret);
 		return -EFAULT;
 	}
 
@@ -7814,22 +7818,22 @@ int ps_slowpath_packet(struct ps_context *context,
 	int ret;
 
 	if (copy_from_user(&pkt, pkt_usr, sizeof(pkt))) {
-		printk("copy_from_user() failed.\n");
+		printk(KERN_ERR "copy_from_user() failed.\n");
 		return -EFAULT;
 	}
 
 	if (pkt.len < ETH_HLEN || pkt.len > ETH_FRAME_LEN) {
-		printk("wrong packet length (%d bytes).\n", pkt.len);
+		if (printk_ratelimit()) printk(KERN_NOTICE "wrong packet length (%d bytes).\n", pkt.len);
 		return -EINVAL;
 	}
 
 	if (pkt.offset < 0 || pkt.offset > PS_MAX_CHUNK_SIZE * PS_MAX_PACKET_SIZE) {
-		printk("wrong packet offset. (%d byte)", pkt.offset);
+		if (printk_ratelimit()) printk(KERN_NOTICE "wrong packet offset. (%d byte)", pkt.offset);
 		return -EINVAL;
 	}
 
 	if (pkt.arrived_ifindex < 0 || pkt.arrived_ifindex >= adapters_found) {
-		printk("no such device. (ps ifindex %d)\n", pkt.arrived_ifindex);
+		if (printk_ratelimit()) printk(KERN_NOTICE "no such device. (ps ifindex %d)\n", pkt.arrived_ifindex);
 		return -EINVAL;
 	}
 
