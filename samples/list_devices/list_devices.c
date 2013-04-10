@@ -24,7 +24,7 @@ int main()
 		printf("%d: %s ",
 				dev->ifindex, 
 				dev->name);
-		
+
 		printf("(%02hhX:%02hhX:%02hhX:%02hhX:%02hhX:%02hhX)  ", 
 				dev->dev_addr[0],
 				dev->dev_addr[1],
@@ -35,9 +35,11 @@ int main()
 
 		printf("%u.%u.%u.%u  ", t[0], t[1], t[2], t[3]);
 
-		printf("%d RX, %d TX queues\n", 
+		printf("%d RX, %d TX queues; ",
 				dev->num_rx_queues,
 				dev->num_tx_queues);
+
+		printf("node %d\n", dev->numa_node);
 	}
 
 	return 0;

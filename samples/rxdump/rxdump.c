@@ -5,6 +5,8 @@
 #include <errno.h>
 
 #include <netinet/in.h>
+#include <netinet/ip6.h>
+#include <arpa/inet.h>
 
 #include <linux/if_ether.h>
 #include <linux/ip.h>
@@ -17,9 +19,11 @@ void dump_packet(char *buf, int len)
 {
 	struct ethhdr *ethh;
 	struct iphdr *iph;
+	struct ip6_hdr *ip6h;
 	struct udphdr *udph;
 	struct tcphdr *tcph;
-	uint8_t *t;
+	uint8_t proto_in_ip = 0;
+	char outbuf[64];
 
 	ethh = (struct ethhdr *)buf;
 	printf("%02X:%02X:%02X:%02X:%02X:%02X -> %02X:%02X:%02X:%02X:%02X:%02X ",
@@ -36,43 +40,58 @@ void dump_packet(char *buf, int len)
 			ethh->h_dest[4],
 			ethh->h_dest[5]);
 
-	if (ntohs(ethh->h_proto) != ETH_P_IP) {
+	/* IP layer */
+	switch (ntohs(ethh->h_proto)) {
+	case ETH_P_IP:
+		iph = (struct iphdr *)(ethh + 1);
+		proto_in_ip = iph->protocol;
+		udph = (struct udphdr *)((uint32_t *)iph + iph->ihl);
+		tcph = (struct tcphdr *)((uint32_t *)iph + iph->ihl);
+		printf(" ");
+		inet_ntop(AF_INET, (void *)&iph->saddr, outbuf, sizeof(outbuf));
+		printf("%s", outbuf);
+		if (proto_in_ip == IPPROTO_TCP || proto_in_ip == IPPROTO_UDP)
+			printf("(%d)", ntohs(udph->source));
+		printf(" -> ");
+		inet_ntop(AF_INET, (void *)&iph->daddr, outbuf, sizeof(outbuf));
+		printf("%s", outbuf);
+		if (proto_in_ip == IPPROTO_TCP || proto_in_ip == IPPROTO_UDP)
+			printf("(%d)", ntohs(udph->dest));
+		printf(" TTL=%d ", iph->ttl);
+		if (ip_fast_csum(iph, iph->ihl)) {
+			__sum16 org_csum, correct_csum;
+			org_csum = iph->check;
+			iph->check = 0;
+			correct_csum = ip_fast_csum(iph, iph->ihl);
+			printf("(bad checksum %04x should be %04x) ",
+					ntohs(org_csum), ntohs(correct_csum));
+			iph->check = org_csum;
+		}
+		break;
+	case ETH_P_IPV6:
+		ip6h = (struct ip6_hdr *)(ethh + 1);
+		proto_in_ip = ip6h->ip6_nxt;
+		udph = (struct udphdr *)((uint8_t *)ip6h + ip6h->ip6_plen);
+		tcph = (struct tcphdr *)((uint8_t *)ip6h + ip6h->ip6_plen);
+		printf(" ");
+		inet_ntop(AF_INET6, (void *)&ip6h->ip6_src, outbuf, sizeof(outbuf));
+		printf("%s", outbuf);
+		if (proto_in_ip == IPPROTO_TCP || proto_in_ip == IPPROTO_UDP)
+			printf("(%d)", ntohs(udph->source));
+		printf(" -> ");
+		inet_ntop(AF_INET6, (void *)&ip6h->ip6_dst, outbuf, sizeof(outbuf));
+		printf("%s", outbuf);
+		if (proto_in_ip == IPPROTO_TCP || proto_in_ip == IPPROTO_UDP)
+			printf("(%d)", ntohs(udph->dest));
+		printf(" ");
+		break;
+	default:
 		printf("protocol %04hx  ", ntohs(ethh->h_proto));
 		goto done;
 	}
 
-	printf(" ");
-
-	iph = (struct iphdr *)(ethh + 1);
-	udph = (struct udphdr *)((uint32_t *)iph + iph->ihl);
-	tcph = (struct tcphdr *)((uint32_t *)iph + iph->ihl);
-
-	t = (uint8_t *)&iph->saddr;
-	printf("%u.%u.%u.%u", t[0], t[1], t[2], t[3]);
-	if (iph->protocol == IPPROTO_TCP || iph->protocol == IPPROTO_UDP)
-		printf("(%d)", ntohs(udph->source));
-
-	printf(" -> ");
-
-	t = (uint8_t *)&iph->daddr;
-	printf("%u.%u.%u.%u", t[0], t[1], t[2], t[3]);
-	if (iph->protocol == IPPROTO_TCP || iph->protocol == IPPROTO_UDP)
-		printf("(%d)", ntohs(udph->dest));
-
-	printf(" TTL=%d ", iph->ttl);
-
-	if (ip_fast_csum(iph, iph->ihl)) {
-		__sum16 org_csum, correct_csum;
-		
-		org_csum = iph->check;
-		iph->check = 0;
-		correct_csum = ip_fast_csum(iph, iph->ihl);
-		printf("(bad checksum %04x should be %04x) ",
-				ntohs(org_csum), ntohs(correct_csum));
-		iph->check = org_csum;
-	}
-
-	switch (iph->protocol) {
+	/* Transport layer */
+	switch (proto_in_ip) {
 	case IPPROTO_TCP:
 		printf("TCP ");
 		if (tcph->syn)
@@ -92,7 +111,7 @@ void dump_packet(char *buf, int len)
 		printf("UDP ");
 		break;
 	default:
-		printf("protocol %d ", iph->protocol);
+		printf("protocol %d ", proto_in_ip);
 		goto done;
 	}
 
