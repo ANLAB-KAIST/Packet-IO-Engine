@@ -38,7 +38,7 @@ BEGIN_C_DECLS
  * Constant for io_engine and corresponding libraries only
  */
 enum {
-	PS_MAX_CPUS = 16,
+	PS_MAX_CPUS = 32,
 	PS_MAX_DEVICES = 16,
 	PS_MAX_QUEUES = 64,
 	PS_MAX_BUFS = 16,
