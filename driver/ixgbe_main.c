@@ -7114,11 +7114,15 @@ int ps_open(struct inode *inode, struct file *filp)
 {
 	struct ps_context *context;
 
-	try_module_get(THIS_MODULE);
+	if (!try_module_get(THIS_MODULE)) {
+		printk(KERN_ERR "ps_ixgbe: Cannot get the module handle.\n");
+		return -EFAULT;
+	}
+
 	context = kmalloc_node(sizeof(struct ps_context), 
 			GFP_USER, numa_node_id());
 	if (!context) {
-		printk(KERN_ERR "Allocation of ps_context failed\n");
+		printk(KERN_ERR "ps_ixgbe: Allocation of ps_context failed\n");
 		return -ENOMEM;
 	}
 
@@ -7127,7 +7131,7 @@ int ps_open(struct inode *inode, struct file *filp)
 	context->info = kmalloc_node(sizeof(struct ps_pkt_info) * PS_MAX_CHUNK_SIZE, 
 			GFP_USER, numa_node_id());
 	if (!context->info) {
-		printk(KERN_ERR "Allocation of ps_context->info failed\n");
+		printk(KERN_ERR "ps_ixgbe: Allocation of ps_context->info failed\n");
 		return -ENOMEM;
 	}
 
