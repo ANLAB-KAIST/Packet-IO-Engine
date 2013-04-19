@@ -7114,6 +7114,7 @@ int ps_open(struct inode *inode, struct file *filp)
 {
 	struct ps_context *context;
 
+	try_module_get(THIS_MODULE);
 	context = kmalloc_node(sizeof(struct ps_context), 
 			GFP_USER, numa_node_id());
 	if (!context) {
@@ -7170,6 +7171,7 @@ int ps_release(struct inode *inode, struct file *filp)
 	kfree(context);
 	filp->private_data = NULL;
 
+	module_put(THIS_MODULE);
 	return 0;
 }
 
