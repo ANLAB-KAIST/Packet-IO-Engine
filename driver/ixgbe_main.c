@@ -7870,6 +7870,66 @@ int ps_slowpath_packet(struct ps_context *context,
 	return 0;
 }
 
+unsigned int ps_poll(struct file *filp, poll_table *wait)
+{
+	struct ps_context *context = filp->private_data;
+	struct ixgbe_ring *rx_ring, *tx_ring;
+	union ixgbe_adv_rx_desc *rx_desc;
+	unsigned int mask = 0;
+	int i, j;
+	int cpu = get_cpu();
+	bool recv_found = false;
+	int qidx, left;
+	u32 staterr;
+
+	/* Note that poll_wait() itself does not sleep at all.
+	 * The VFS layer will do it if ps_poll() returns zero. */
+	poll_wait(filp, &context->wq, wait);
+
+	for (i = 0; i < context->num_attached; i++) {
+		j = (context->next_ring + i) % context->num_attached;
+		rx_ring = context->rx_rings[j];
+
+		/* Check if this rx_ring has some data. */
+		spin_lock_bh(&rx_ring->lock);
+		rx_desc = IXGBE_RX_DESC_ADV(*rx_ring, rx_ring->next_to_clean);
+		staterr = le32_to_cpu(rx_desc->wb.upper.status_error);
+		recv_found = staterr & IXGBE_RXD_STAT_DD;
+		spin_unlock_bh(&rx_ring->lock);
+
+		if (recv_found) {
+			mask |= POLLIN | POLLRDNORM;  /* readable */
+			break;
+		} else {
+			/* Enable the RX interrupt temporarily.
+			 * XXX: it assumes 1-to-1 queue-vector matching */
+			ixgbe_irq_enable_queues(rx_ring->adapter,
+					(u64)1 << rx_ring->reg_idx);
+		}
+	}
+
+#if 0
+	/* When transmitting, we get ifindex and qidx from the chunk.
+	 * We need a different API for the user-space to check writability
+	 * of the interface/queue that it wants to use for packet TX. */
+	tx_ring = adapters[/* TODO */]->tx_rings[cpu];
+	poll_wait(filp, tx_ring->wq, poll_data);
+
+	spin_lock_bh(&tx_ring->lock);
+	qidx = tx_ring->next_to_use;
+	if (tx_ring->next_to_clean <= tx_ring->next_to_use)
+		left = tx_ring->count - tx_ring->next_to_use + tx_ring->next_to_clean - 1;
+	else
+		left = tx_ring->next_to_clean - tx_ring->next_to_use - 1;
+	if (left > 0) { /* XXX: use some batch size? */
+		mask |= POLLOUT | POLLWRNORM;  /* writable */
+	}
+	spin_unlock_bh(&tx_ring->lock);
+#endif
+
+	return mask;
+}
+
 long ps_ioctl(struct file *filp,
 		unsigned int cmd, unsigned long arg)
 {
@@ -7932,6 +7992,7 @@ static struct file_operations ps_fops = {
 	.open = ps_open,
 	.release = ps_release,
 	.mmap = ps_mmap,
+	.poll = ps_poll,
 	.unlocked_ioctl = ps_ioctl,
 };
 
