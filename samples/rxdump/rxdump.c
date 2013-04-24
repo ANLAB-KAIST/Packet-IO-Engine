@@ -12,6 +12,10 @@
 #include <linux/ip.h>
 #include <linux/udp.h>
 #include <linux/tcp.h>
+#ifdef USE_EPOLL
+#include <sys/epoll.h>
+#define MAX_EVENTS 8
+#endif
 
 #include "psio.h"
 
@@ -212,37 +216,65 @@ void dump()
 	}
 
 	chunk.cnt = 1; /* no batching */
-	chunk.recv_blocking = 1;
+
+#ifdef USE_EPOLL
+	struct epoll_event ev, events[MAX_EVENTS];
+	int epfd = epoll_create(1);
+	ev.events = EPOLLIN; /* check readability in level-triggered way */
+	ev.data.fd = handle.fd;
+	epoll_ctl(epfd, EPOLL_CTL_ADD, handle.fd, &ev);
+#endif
 
 	for (;;) {
-		int ret = ps_recv_chunk(&handle, &chunk);
+#ifdef USE_EPOLL
+		int i;
+		int num_fds = epoll_wait(epfd, events, MAX_EVENTS, -1);
 
-		if (ret < 0) {
-			if (errno == EINTR)
+		for (i = 0; i < num_fds; i++) {
+			/* Here we only expect handle.fd, nothing else. */
+			assert(events[i].data.fd == handle.fd);
+
+			/* No batching, non-blocking mode. */
+			chunk.cnt = 1;
+			chunk.recv_blocking = 0;
+			int ret = ps_recv_chunk(&handle, &chunk);
+
+			if (ret < 0 && (errno == EINTR || errno == EAGAIN))
 				continue;
 
-			if (!chunk.recv_blocking && errno == EWOULDBLOCK)
-				break;
+#else
+		{
+			/* No batching, blocking mode. */
+			chunk.cnt = 1;
+			chunk.recv_blocking = 1;
+			int ret = ps_recv_chunk(&handle, &chunk);
 
-			assert(0);
+			if (ret < 0) {
+				if (errno == EINTR)
+					continue;
+
+				if (!chunk.recv_blocking && errno == EWOULDBLOCK)
+					break;
+
+				assert(0);
+			}
+#endif
+
+			if (ret > 0) {
+				struct ps_packet packet;
+
+				printf("%s:%d ", 
+						devices[chunk.queue.ifindex].name,
+						chunk.queue.qidx);
+				dump_packet(chunk.buf + chunk.info[0].offset, chunk.info[0].len);
+
+				packet.arrived_ifindex = chunk.queue.ifindex;
+				packet.len = chunk.info[0].len;
+				packet.buf = chunk.buf + chunk.info[0].offset;
+
+				assert(ps_slowpath_packet(&handle, &packet) == 0);
+			}
 		}
-
-		if (ret > 0) {
-			struct ps_packet packet;
-
-			printf("%s:%d ", 
-					devices[chunk.queue.ifindex].name,
-					chunk.queue.qidx);
-			dump_packet(chunk.buf + chunk.info[0].offset, chunk.info[0].len);
-
-			packet.arrived_ifindex = chunk.queue.ifindex;
-			packet.len = chunk.info[0].len;
-			packet.buf = chunk.buf + chunk.info[0].offset;
-
-			assert(ps_slowpath_packet(&handle, &packet) == 0);
-		}
-
-		chunk.cnt = 1;
 	}
 }
 
