@@ -7899,6 +7899,10 @@ unsigned int ps_poll(struct file *filp, poll_table *wait)
 
 		if (recv_found) {
 			mask |= POLLIN | POLLRDNORM;  /* readable */
+			/* Give a hint for the following ps_recv_chunk() call.
+			 * This will prevent unnecesary iteration over
+			 * (possibly) empty queues. */
+			context->next_ring = j;
 			break;
 		} else {
 			/* Enable the RX interrupt temporarily.
