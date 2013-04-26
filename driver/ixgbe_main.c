@@ -7873,13 +7873,12 @@ int ps_slowpath_packet(struct ps_context *context,
 unsigned int ps_poll(struct file *filp, poll_table *wait)
 {
 	struct ps_context *context = filp->private_data;
-	struct ixgbe_ring *rx_ring, *tx_ring;
+	struct ixgbe_ring *rx_ring;
 	union ixgbe_adv_rx_desc *rx_desc;
 	unsigned int mask = 0;
 	int i, j;
-	int cpu = get_cpu();
 	bool recv_found = false;
-	int qidx, left;
+	unsigned long irq_flags;
 	u32 staterr;
 
 	/* Note that poll_wait() itself does not sleep at all.
@@ -7891,11 +7890,11 @@ unsigned int ps_poll(struct file *filp, poll_table *wait)
 		rx_ring = context->rx_rings[j];
 
 		/* Check if this rx_ring has some data. */
-		spin_lock_bh(&rx_ring->lock);
+		spin_lock_irqsave(&rx_ring->lock, irq_flags);
 		rx_desc = IXGBE_RX_DESC_ADV(*rx_ring, rx_ring->next_to_clean);
 		staterr = le32_to_cpu(rx_desc->wb.upper.status_error);
 		recv_found = staterr & IXGBE_RXD_STAT_DD;
-		spin_unlock_bh(&rx_ring->lock);
+		spin_unlock_irqrestore(&rx_ring->lock, irq_flags);
 
 		if (recv_found) {
 			mask |= POLLIN | POLLRDNORM;  /* readable */
@@ -7916,6 +7915,9 @@ unsigned int ps_poll(struct file *filp, poll_table *wait)
 	/* When transmitting, we get ifindex and qidx from the chunk.
 	 * We need a different API for the user-space to check writability
 	 * of the interface/queue that it wants to use for packet TX. */
+	int qidx, left;
+	int cpu = get_cpu();
+	struct ixgbe_ring *tx_ring;
 	tx_ring = adapters[/* TODO */]->tx_rings[cpu];
 	poll_wait(filp, tx_ring->wq, poll_data);
 
