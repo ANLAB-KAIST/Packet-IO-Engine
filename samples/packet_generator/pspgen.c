@@ -582,6 +582,7 @@ void send_packets(long packets,
 			}
 
 			/* Fill the chunk with packets generated. */
+			int offset = 0;
 			for (j = 0; j < chunk.cnt; j++) {
 				int cur_pkt_size;
 				if (min_packet_size < packet_size)
@@ -589,7 +590,8 @@ void send_packets(long packets,
 				else
 					cur_pkt_size = packet_size;
 				chunk.info[j].len = cur_pkt_size;
-				chunk.info[j].offset = j * PS_ALIGN(cur_pkt_size, 64);
+				chunk.info[j].offset = offset;
+				offset = PS_ALIGN(offset + cur_pkt_size, 64);
 
 				if (num_flows == 0) {
 					if (ip_version == 4) {
