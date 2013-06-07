@@ -478,6 +478,7 @@ void build_packet_v6(char *buf, int size, uint64_t *seed)
 void send_packets(long packets, 
 		int chunk_size,
 		int packet_size,
+		int min_packet_size,
 		int num_flows,
 		int loop_count)
 {
@@ -496,6 +497,9 @@ void send_packets(long packets,
 	if (num_flows == 0)
 		seed = time(NULL) + my_cpu;
 
+	// NOTE: If the num_flows option is used, the flow is generated
+	// with maximum sized packets and those sizes are cut randomly when
+	// filling the output chunk.
 	for (i = 0; i < num_flows; i++) {
 		if (ip_version == 4) 
 			build_packet(packet[i], packet_size, &seed);
@@ -560,6 +564,7 @@ void send_packets(long packets,
 			else
 				chunk.cnt = chunk_size;
 
+			// TODO: implement throughput regulation for random sized packets.
 			if (offered_throughput > 0) {
 				unsigned need_to_send_bytes = check_rate(i);
 				if (need_to_send_bytes < 0) {
@@ -578,21 +583,26 @@ void send_packets(long packets,
 
 			/* Fill the chunk with packets generated. */
 			for (j = 0; j < chunk.cnt; j++) {
-				chunk.info[j].len = packet_size;
-				chunk.info[j].offset = j * PS_ALIGN(packet_size, 64);
+				int cur_pkt_size;
+				if (min_packet_size < packet_size)
+					cur_pkt_size = random() % (packet_size - min_packet_size) + min_packet_size;
+				else
+					cur_pkt_size = packet_size;
+				chunk.info[j].len = cur_pkt_size;
+				chunk.info[j].offset = j * PS_ALIGN(cur_pkt_size, 64);
 
 				if (num_flows == 0) {
 					if (ip_version == 4) {
 						build_packet(chunk.buf + chunk.info[j].offset,
-							     packet_size, &seed);
+							     cur_pkt_size, &seed);
 					} else {
 						build_packet_v6(chunk.buf + chunk.info[j].offset,
-							packet_size, &seed);
+							cur_pkt_size, &seed);
 					}
 				} else {
 					memcpy_aligned(chunk.buf + chunk.info[j].offset, 
 						packet[(next_flow[i] + j) % num_flows], 
-						packet_size);
+						cur_pkt_size);
 				}
 
 				/* Write the src/dest ethernet address corresponding to the
@@ -609,7 +619,7 @@ void send_packets(long packets,
 				//}
 				memcpy(eth->h_source, devices[chunk.queue.ifindex].dev_addr, ETH_ALEN);
 				if (debug) {
-					printf("len %d %d eth_hlen %ld ", packet_size, chunk.info[j].len, sizeof(struct ethhdr));
+					printf("len %d %d eth_hlen %ld ", cur_pkt_size, chunk.info[j].len, sizeof(struct ethhdr));
 					ether_ntoa_r((struct ether_addr *) eth->h_source, strbuf);
 					printf("src %s ", strbuf);
 					ether_ntoa_r((struct ether_addr *) eth->h_dest, strbuf);
@@ -658,6 +668,7 @@ void print_usage(char *program)
 			"[-n <num_packets>] "
 			"[-s <chunk_size>] "
 			"[-p <packet_size>] "
+			"[--min-pkt-size <min_packet_size>] "
 			"[-f <num_flows>] "
 			"[-v <ip version>] "
 			"[-l <latency measure>] "
@@ -673,6 +684,10 @@ void print_usage(char *program)
 	fprintf(stderr, "    (note: <num_packets> is a per-cpu value.)\n");
 	fprintf(stderr, "  default <chunk_size> is 64. packets per chunk\n");
 	fprintf(stderr, "  default <packet_size> is 60. (w/o 4-byte CRC)\n");
+	fprintf(stderr, "  default <min_packet_size> is same to <packet_size>.\n"
+			"    If set, it will generate packets randomly sized\n"
+			"    between <min_packet_size> and <packet_size>.\n"
+			"    Must follow after <packet_size> option to be effective.\n");
 	fprintf(stderr, "  default <num_flows> is 0. (0 = infinite)\n");
 	fprintf(stderr, "  default <ip version> is 4. (6 = ipv6)\n");
 	fprintf(stderr, "  default <latency> is 0. (1 = on)\n");
@@ -688,6 +703,7 @@ int main(int argc, char **argv)
 	int num_packets = 0;
 	int chunk_size = 64;
 	int packet_size = 60;
+	int min_packet_size = packet_size;
 	int num_flows = 0;
 	int loop_count = 1;
 	char neighbor_conf_filename[MAX_PATH] = "neighbors.conf";
@@ -720,7 +736,11 @@ int main(int argc, char **argv)
 			assert(chunk_size >= 1 && chunk_size <= PS_MAX_CHUNK_SIZE);
 		} else if (!strcmp(argv[i], "-p")) {
 			packet_size = atoi(argv[i + 1]);
+			min_packet_size = packet_size;
 			assert(packet_size >= 60 && packet_size <= 1514);
+		} else if (!strcmp(argv[i], "--min-pkt-size")) {
+			min_packet_size = atoi(argv[i + 1]);
+			assert(min_packet_size >= 60 && min_packet_size <= packet_size);
 		} else if (!strcmp(argv[i], "-f")) {
 			num_flows = atoi(argv[i + 1]);
 			assert(num_flows >= 0 && num_flows <= MAX_FLOWS);
@@ -772,7 +792,7 @@ int main(int argc, char **argv)
 			assert(time_limit >= 0);
 		} else if (!strcmp(argv[i], "-g")) {
 			offered_throughput = atof(argv[i + 1]);
-			assert(offered_throughput >= 0);
+			assert(offered_throughput > 0);
 		} else if (!strcmp(argv[i], "--debug")) {
 			debug = true;
 			i--;
@@ -781,6 +801,11 @@ int main(int argc, char **argv)
 			assert(strnlen(neighbor_conf_filename, MAX_PATH) > 0);
 		} else
 			print_usage(argv[0]);
+	}
+
+	if (offered_throughput > 0 && min_packet_size != packet_size) {
+		fprintf(stderr, "Throughput regulation for random sized packets is not supported yet.\n");
+		exit(1);
 	}
 
 	if (num_devices_registered == 0) {
@@ -835,6 +860,7 @@ int main(int argc, char **argv)
 	printf("# of packets = %d\n", num_packets);
 	printf("chunk size = %d\n", chunk_size);
 	printf("packet size = %d\n", packet_size);
+	printf("min. packet size = %d\n", min_packet_size);
 	printf("# of flows = %d\n", num_flows);
 	printf("ip version = %d\n", ip_version);
 	printf("latency measure = %d\n", latency_measure);
@@ -869,6 +895,7 @@ int main(int argc, char **argv)
 
 			send_packets(num_packets ? : LONG_MAX, chunk_size,
 					packet_size,
+					min_packet_size,
 					num_flows,
 					loop_count);
 			return 0;
