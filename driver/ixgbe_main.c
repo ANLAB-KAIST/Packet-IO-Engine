@@ -277,10 +277,15 @@ static bool ixgbe_clean_tx_irq(struct ixgbe_adapter *adapter,
                                int *work_done, int work_to_do)
 {
 	struct net_device *netdev = adapter->netdev;
+	union ixgbe_adv_tx_desc *tx_desc = NULL;
 	unsigned int i, head, count = 0;
 
 	head = IXGBE_READ_REG(&adapter->hw, tx_ring->head);
 	i = tx_ring->next_to_clean;
+
+	tx_desc = IXGBE_TX_DESC_ADV(*tx_ring, i);
+	if (!(tx_desc->wb.status & IXGBE_TXD_STAT_DD))
+		return false;
 
 	if (i <= head)
 		count = head - i;
