@@ -58,6 +58,10 @@
 #include "ixgbe.h"
 #include "../include/psio.h"
 
+/* RS-bit and TX descriptor free threshold.
+ * See more details at Intel DPDK's librte_pmd_ixgbe source code. */
+#define DEFAULT_TX_RS_THRESH	32
+
 /* disable features we don't need any more... - adaline*/
 #define IXGBE_NO_LRO	1
 #define IXGBE_NO_HW_RSC 1
@@ -1006,29 +1010,35 @@ int ixgbe_xmit_batch(struct ixgbe_ring *tx_ring,
 	struct ixgbe_tx_buffer *bi;
 	union ixgbe_adv_tx_desc *tx_desc = NULL;
 	int qidx, next_qidx; 
-	int i = 0;
-	int left, cnt, actual_cnt;
+	int i = 0, xmit_done;
+	int left, cnt = 0, actual_cnt = 0, num_txd_used;
 	unsigned int total_bytes = 0;
 	u8 *dst;
 	
-	const u32 cmd_type_len = IXGBE_ADVTXD_DTYP_DATA |
-		IXGBE_ADVTXD_DCMD_DEXT |
-		IXGBE_TXD_CMD_EOP |
-		//IXGBE_TXD_CMD_RS |
-		IXGBE_TXD_CMD_IFCS;
+	/* For every packet, (DATA | DEXT | IFCS) flags must be set.
+	 * Since we do not use segmentation, we also set EOP flag as well
+	 * here.  We set RS flag in some interval later. (See below) */
+	u32 cmd_type_len = IXGBE_ADVTXD_DTYP_DATA |
+			   IXGBE_ADVTXD_DCMD_DEXT |
+			   IXGBE_TXD_CMD_EOP |
+			   IXGBE_TXD_CMD_IFCS;
 
 	qidx = tx_ring->next_to_use;
 
+	/* Check the free descriptors. */
 	if (tx_ring->next_to_clean <= tx_ring->next_to_use)
 		left = tx_ring->count - tx_ring->next_to_use + tx_ring->next_to_clean - 1;
 	else
 		left = tx_ring->next_to_clean - tx_ring->next_to_use - 1;
 
-	if (left < num_to_xmit) {
-		int tmp;
-		ixgbe_clean_tx_irq(adapter, tx_ring, &tmp, 0);
+	while (left < num_to_xmit) {
+		/* Clean until we have enough free descriptors or cannot clean any more. */
+		bool cleaned = ixgbe_clean_tx_irq(adapter, tx_ring, &xmit_done, num_to_xmit);
+		if (!cleaned) {
+			return 0;
+		}
 
-		/* second try */
+		/* Update the number of remaining free TX descriptors. */
 		if (tx_ring->next_to_clean <= tx_ring->next_to_use)
 			left = tx_ring->count - tx_ring->next_to_use + tx_ring->next_to_clean - 1;
 		else
@@ -1036,8 +1046,9 @@ int ixgbe_xmit_batch(struct ixgbe_ring *tx_ring,
 	}
 
 	cnt = min(num_to_xmit, left);
-	if (cnt == 0)
-		return cnt;
+	if (cnt == 0) {
+		return 0;
+	}
 
 	dst = packet_buf(tx_ring, qidx);
 
@@ -1059,13 +1070,19 @@ int ixgbe_xmit_batch(struct ixgbe_ring *tx_ring,
 	prefetchnta(dst + PS_MAX_PACKET_SIZE * 7);
 	
 	actual_cnt = cnt;
+	num_txd_used = 0;
 	for (i = 0; i < cnt; i++) {
 		int len = info[i].len;
-		if (info[i].offset == -1) { // skip
+
+		/* Drop packets if marked as so in the userlevel. */
+		if (unlikely(info[i].offset == -1)) {
 			actual_cnt--;
 			continue;
 		}
-		
+
+		tx_desc = IXGBE_TX_DESC_ADV(*tx_ring, qidx);
+
+		num_txd_used ++;
 		dst = packet_buf(tx_ring, qidx);
 
 		prefetchnta(&tx_ring->tx_buffer_info[qidx + 8]);
@@ -1076,7 +1093,11 @@ int ixgbe_xmit_batch(struct ixgbe_ring *tx_ring,
 
 		memcpy_aligned(dst, buf + info[i].offset, len);
 
-		tx_desc = IXGBE_TX_DESC_ADV(*tx_ring, qidx);
+		/* Set RS bit regularly. */
+		if (num_txd_used >= DEFAULT_TX_RS_THRESH) {
+			cmd_type_len |= IXGBE_TXD_CMD_RS;
+			num_txd_used = 0;
+		}
 
 		tx_desc->read.buffer_addr = 
 				cpu_to_le64(packet_dma(tx_ring, qidx));
@@ -1094,11 +1115,6 @@ int ixgbe_xmit_batch(struct ixgbe_ring *tx_ring,
 		total_bytes += len;
 
 		qidx = next_qidx;
-
-		if (i % 256 == 255) {
-			wmb();
-			writel(qidx, adapter->hw.hw_addr + tx_ring->tail);
-		}
 	}
 
 	tx_ring->next_to_use = qidx;
