@@ -1012,8 +1012,8 @@ int ixgbe_xmit_batch(struct ixgbe_ring *tx_ring,
 		int num_to_xmit, struct ps_pkt_info *info, char *buf)
 {
 	struct ixgbe_adapter *adapter = tx_ring->adapter;
-	struct ixgbe_tx_buffer *bi;
-	union ixgbe_adv_tx_desc *tx_desc = NULL;
+	volatile struct ixgbe_tx_buffer *bi;
+	volatile union ixgbe_adv_tx_desc *tx_desc = NULL;
 	int qidx, next_qidx; 
 	int i = 0, xmit_done;
 	int left, cnt = 0, actual_cnt = 0, num_txd_used;
