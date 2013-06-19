@@ -253,10 +253,6 @@ ifeq (1,$(shell [ $(KVER_CODE) -ge 132096 ] && echo 1 || echo 0))
 # Makefile for 2.6.x kernel
 TARGET = $(DRIVER_NAME).ko
 
-# man page
-MANSECTION = 7
-MANFILE = $(TARGET:.ko=.$(MANSECTION))
-
 ifneq ($(PATCHLEVEL),)
 EXTRA_CFLAGS += $(CFLAGS_EXTRA)
 obj-m += $(DRIVER_NAME).o
@@ -273,10 +269,6 @@ endif
 else # ifeq ($(K_VERSION),2.6)
 # Makefile for 2.4.x kernel
 TARGET = $(DRIVER_NAME).o
-
-# man page
-MANSECTION = 7
-MANFILE = $(TARGET:.o=.$(MANSECTION))
 
 # Get rid of compile warnings in kernel header files from SuSE
 ifneq (,$(wildcard /etc/SuSE-release))
@@ -336,10 +328,7 @@ DEPVER := $(shell /sbin/depmod -V 2>/dev/null | \
 ###########################################################################
 # Build rules
 
-$(MANFILE).gz: ../$(MANFILE)
-	gzip -c $< > $@
-
-install: default $(MANFILE).gz
+install: default
 	# remove all old versions of the driver
 	find $(INSTALL_MOD_PATH)/lib/modules/$(KVER) -name $(TARGET) -exec rm -f {} \; || true
 	find $(INSTALL_MOD_PATH)/lib/modules/$(KVER) -name $(TARGET).gz -exec rm -f {} \; || true
@@ -353,17 +342,12 @@ else
 	/sbin/depmod -b $(INSTALL_MOD_PATH) -a -n $(KVERSION) > /dev/null || true
   endif
 endif
-	install -D -m 644 $(MANFILE).gz $(INSTALL_MOD_PATH)$(MANDIR)/man$(MANSECTION)/$(MANFILE).gz
-	man -c -P'cat > /dev/null' $(MANFILE:.$(MANSECTION)=) || true
 
 uninstall:
 	if [ -e $(INSTDIR)/$(TARGET) ] ; then \
 	    rm -f $(INSTDIR)/$(TARGET) ; \
 	fi
 	/sbin/depmod -a
-	if [ -e $(MANDIR)/man$(MANSECTION)/$(MANFILE).gz ] ; then \
-		rm -f $(MANDIR)/man$(MANSECTION)/$(MANFILE).gz ; \
-	fi
 
 .PHONY: clean install
 
@@ -373,4 +357,4 @@ ifeq ($(KOBJ),$(KSRC))
 else
 	$(MAKE) -C $(KSRC) O=$(KOBJ) SUBDIRS=$(shell pwd) clean
 endif
-	rm -rf $(TARGET) $(TARGET:.ko=.o) $(TARGET:.ko=.mod.c) $(TARGET:.ko=.mod.o) $(CFILES:.c=.o) $(MANFILE).gz .*cmd .tmp_versions
+	rm -rf $(TARGET) $(TARGET:.ko=.o) $(TARGET:.ko=.mod.c) $(TARGET:.ko=.mod.o) $(CFILES:.c=.o) .*cmd .tmp_versions
