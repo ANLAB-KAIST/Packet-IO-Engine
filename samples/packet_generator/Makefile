@@ -8,7 +8,7 @@ CFLAGS = -O2 -g -Wall $(INC)
 all: packet_generator pspgen
 
 pspgen: pspgen.c
-	gcc $(CFLAGS) -o pspgen pspgen.c $(LIB_DIR) $(LIBS) -lpthread
+	gcc $(CFLAGS) -o pspgen pspgen.c $(LIB_DIR) $(LIBS) -lpthread -lpcap
 
 packet_generator: packet_generator.c
 	gcc $(CFLAGS) -o packet_generator packet_generator.c $(LIB_DIR) $(LIBS)
