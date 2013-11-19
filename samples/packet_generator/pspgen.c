@@ -825,6 +825,10 @@ int main(int argc, char **argv)
 			print_usage(argv[0]);
 	}
 
+	if (!randomize_flows && num_flows == 0) {
+		fprintf(stderr, "Number of flows must be specified when you use -r option (non-random dest address).\n");
+		exit(1);
+	}
 	if (offered_throughput > 0 && min_packet_size != packet_size) {
 		fprintf(stderr, "Throughput regulation for random sized packets is not supported yet.\n");
 		exit(1);
