@@ -85,6 +85,9 @@ static uint8_t neighbor_ethaddrs[PS_MAX_DEVICES][ETH_ALEN];
 static uint32_t neighbor_ipv4addrs[PS_MAX_DEVICES];
 static uint8_t neighbor_ipv6addrs[PS_MAX_DEVICES][16];
 
+/* Other options */
+static bool randomize_flows = true; /** example: set false when testing all-matching IPsec tunnels */
+
 struct ps_handle handles[PS_MAX_CPUS];
 
 static inline uint64_t ps_rdtsc()
@@ -400,17 +403,26 @@ void build_packet(char *buf, int size, uint64_t *seed)
 	ip->protocol = IPPROTO_UDP;
 	/* Currently we do not test source-routing. */
 	ip->saddr = HTONL(0x0A000001);
-	/* Prevent generation of multicast packets, though its probability is very low. */
-	ip->daddr = HTONL(myrand(seed));
-	unsigned char *daddr = (unsigned char*)(&ip->daddr);
-	daddr[0] = 0x0A;
+	if (randomize_flows) {
+		/* Prevent generation of multicast packets, though its probability is very low. */
+		ip->daddr = HTONL(myrand(seed));
+		unsigned char *daddr = (unsigned char*)(&ip->daddr);
+		daddr[0] = 0x0A;
+	} else {
+		uint64_t s = ++(*seed);
+		ip->daddr = HTONL(0x0A000000 | (s & 0x00FFFFFF));
+	}
+
 	ip->check = 0;
 	ip->check = ip_fast_csum(ip, ip->ihl);
 
 	udp = (struct udphdr *)((char *)ip + sizeof(*ip));
 
-	rand_val = myrand(seed);
-	//udp->source = HTONS(rand_val & 0xFFFF);
+	if (randomize_flows) {
+		rand_val = myrand(seed);
+		udp->source = HTONS(rand_val & 0xFFFF);
+	} else
+		rand_val = 80;
 	/* For debugging, we fix the source port. */
 	udp->source = HTONS(9999);
 	udp->dest = HTONS((rand_val >> 16) & 0xFFFF);
@@ -454,6 +466,9 @@ void build_packet_v6(char *buf, int size, uint64_t *seed)
 	ip->daddr.s6_addr32[1] = HTONL(myrand(seed));
 	ip->daddr.s6_addr32[2] = HTONL(myrand(seed));
 	ip->daddr.s6_addr32[3] = HTONL(myrand(seed));
+
+	// TODO: implement randomize_flows flag for IPv6 too.
+
 	/* Prevent generation of multicast packets. */
 	unsigned char *daddr = (unsigned char*)(&ip->daddr.s6_addr32[0]);
 	daddr[0] = 0x0A;
@@ -473,7 +488,7 @@ void build_packet_v6(char *buf, int size, uint64_t *seed)
 	memset(content, 0xee, 1);  /* To indicate the beginning of packet content area. */
 }
 
-#define MAX_FLOWS 1024
+#define MAX_FLOWS 16384
 
 void send_packets(long packets, 
 		int chunk_size,
@@ -484,7 +499,7 @@ void send_packets(long packets,
 {
 	struct ps_handle *handle = &handles[my_cpu];
 	struct ps_chunk chunk;
-	char packet[MAX_FLOWS][PS_MAX_PACKET_SIZE];
+	static char packet[MAX_FLOWS][PS_MAX_PACKET_SIZE];
 	int ret;
 
 	int i, j;
@@ -672,6 +687,7 @@ void print_usage(char *program)
 			"[-p <packet_size>] "
 			"[--min-pkt-size <min_packet_size>] "
 			"[-f <num_flows>] "
+			"[-r <randomize flows>] "
 			"[-v <ip version>] "
 			"[-l <latency measure>] "
 			"[-c <loop count>] "
@@ -691,6 +707,7 @@ void print_usage(char *program)
 			"    between <min_packet_size> and <packet_size>.\n"
 			"    Must follow after <packet_size> option to be effective.\n");
 	fprintf(stderr, "  default <num_flows> is 0. (0 = infinite)\n");
+	fprintf(stderr, "  default <randomize_flows> is 1. (0 = off)\n");
 	fprintf(stderr, "  default <ip version> is 4. (6 = ipv6)\n");
 	fprintf(stderr, "  default <latency> is 0. (1 = on)\n");
 	fprintf(stderr, "  default <loop count> is 1. (only valid for latency mesaurement)\n");
@@ -746,6 +763,9 @@ int main(int argc, char **argv)
 		} else if (!strcmp(argv[i], "-f")) {
 			num_flows = atoi(argv[i + 1]);
 			assert(num_flows >= 0 && num_flows <= MAX_FLOWS);
+		} else if (!strcmp(argv[i], "-r")) {
+			randomize_flows = atoi(argv[i + 1]);
+			assert(randomize_flows == false || randomize_flows == true);
 		} else if (!strcmp(argv[i], "-v")) {
 			ip_version = atoi(argv[i + 1]);
 			assert(ip_version == 4 || ip_version == 6);
@@ -805,6 +825,10 @@ int main(int argc, char **argv)
 			print_usage(argv[0]);
 	}
 
+	if (!randomize_flows && num_flows == 0) {
+		fprintf(stderr, "Number of flows must be specified when you use -r option (non-random dest address).\n");
+		exit(1);
+	}
 	if (offered_throughput > 0 && min_packet_size != packet_size) {
 		fprintf(stderr, "Throughput regulation for random sized packets is not supported yet.\n");
 		exit(1);
@@ -864,6 +888,7 @@ int main(int argc, char **argv)
 	printf("packet size = %d\n", packet_size);
 	printf("min. packet size = %d\n", min_packet_size);
 	printf("# of flows = %d\n", num_flows);
+	printf("randomize flows = %d\n", randomize_flows);
 	printf("ip version = %d\n", ip_version);
 	printf("latency measure = %d\n", latency_measure);
 	printf("loop count = %d\n", loop_count);
