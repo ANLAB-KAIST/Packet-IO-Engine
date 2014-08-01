@@ -1938,13 +1938,110 @@ do {								\
 #endif
 #define HAVE_IPLINK_VF_CONFIG
 #endif /* < 2.6.34 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,33) )
+#ifndef pci_pcie_cap
+#define pci_pcie_cap(pdev) pci_find_capability(pdev, PCI_CAP_ID_EXP)
+#endif
+#ifndef IPV4_FLOW
+#define IPV4_FLOW 0x10
+#endif /* IPV4_FLOW */
+#ifndef IPV6_FLOW
+#define IPV6_FLOW 0x11
+#endif /* IPV6_FLOW */
+/* Features back-ported to RHEL6 or SLES11 SP1 after 2.6.32 */
+#if ( (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,0)) || \
+      (SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,1,0)) )
+#if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
+#ifndef HAVE_NETDEV_OPS_FCOE_GETWWN
+#define HAVE_NETDEV_OPS_FCOE_GETWWN
+#endif
+#endif /* CONFIG_FCOE || CONFIG_FCOE_MODULE */
+#endif /* RHEL6 or SLES11 SP1 */
+#ifndef __percpu
+#define __percpu
+#endif /* __percpu */
+#ifndef PORT_DA
+#define PORT_DA PORT_OTHER
+#endif
+#ifndef PORT_NONE
+#define PORT_NONE PORT_OTHER
+#endif
+
+#if ((RHEL_RELEASE_CODE && \
+     (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,3)) && \
+     (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,0))))
+#if !defined(CONFIG_X86_32) && !defined(CONFIG_NEED_DMA_MAP_STATE)
+#undef DEFINE_DMA_UNMAP_ADDR
+#define DEFINE_DMA_UNMAP_ADDR(ADDR_NAME)	dma_addr_t ADDR_NAME
+#undef DEFINE_DMA_UNMAP_LEN
+#define DEFINE_DMA_UNMAP_LEN(LEN_NAME)		__u32 LEN_NAME
+#undef dma_unmap_addr
+#define dma_unmap_addr(PTR, ADDR_NAME)		((PTR)->ADDR_NAME)
+#undef dma_unmap_addr_set
+#define dma_unmap_addr_set(PTR, ADDR_NAME, VAL)	(((PTR)->ADDR_NAME) = (VAL))
+#undef dma_unmap_len
+#define dma_unmap_len(PTR, LEN_NAME)		((PTR)->LEN_NAME)
+#undef dma_unmap_len_set
+#define dma_unmap_len_set(PTR, LEN_NAME, VAL)	(((PTR)->LEN_NAME) = (VAL))
+#endif /* CONFIG_X86_64 && !CONFIG_NEED_DMA_MAP_STATE */
+#endif /* RHEL_RELEASE_CODE */
+
+#if (!(RHEL_RELEASE_CODE && \
+       (((RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(5,8)) && \
+         (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6,0))) || \
+        ((RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,1)) && \
+         (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,0))))))
+static inline bool pci_is_pcie(struct pci_dev *dev)
+{
+	return !!pci_pcie_cap(dev);
+}
+#endif /* RHEL_RELEASE_CODE */
+
+#ifndef __always_unused
+#define __always_unused __attribute__((__unused__))
+#endif
+#ifndef __maybe_unused
+#define __maybe_unused __attribute__((__unused__))
+#endif
+
+#if (!(RHEL_RELEASE_CODE && \
+      (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,2))))
+#define sk_tx_queue_get(_sk) (-1)
+#define sk_tx_queue_set(_sk, _tx_queue) do {} while(0)
+#endif /* !(RHEL >= 6.2) */
+
+#if (RHEL_RELEASE_CODE && \
+     (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,4)) && \
+     (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,0)))
+#define HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT
+#define HAVE_ETHTOOL_GRXFHINDIR_SIZE
+#define HAVE_ETHTOOL_SET_PHYS_ID
+#define HAVE_ETHTOOL_GET_TS_INFO
+#endif /* RHEL >= 6.4 && RHEL < 7.0 */
+
+#else /* < 2.6.33 */
+#if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
+#ifndef HAVE_NETDEV_OPS_FCOE_GETWWN
+#define HAVE_NETDEV_OPS_FCOE_GETWWN
+#endif
+#endif /* CONFIG_FCOE || CONFIG_FCOE_MODULE */
+#endif /* < 2.6.33 */
+
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36) )
 extern int _kc_ethtool_op_set_flags(struct net_device *, u32, u32);
 #define ethtool_op_set_flags _kc_ethtool_op_set_flags
+extern u32 _kc_ethtool_op_get_flags(struct net_device *);
+#define ethtool_op_get_flags _kc_ethtool_op_get_flags
+#if (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,1))
+#define HAVE_8021P_SUPPORT
+#endif
 #else /* < 2.6.36 */
 #define HAVE_PM_QOS_REQUEST_ACTIVE
 #define HAVE_8021P_SUPPORT
+#define HAVE_NDO_GET_STATS64
 #endif /* < 2.6.36 */
 
 /*****************************************************************************/
@@ -1961,6 +2058,25 @@ static inline void _kc_skb_checksum_none_assert(struct sk_buff *skb)
 #else
 #define init_MUTEX(sem)	sema_init(sem, 1)
 #endif /* < 2.6.37 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39) )
+#else /* < 2.6.39 */
+
+#ifndef HAVE_MQPRIO
+#define HAVE_MQPRIO
+#endif
+
+#ifndef HAVE_NDO_SET_FEATURES
+#define HAVE_NDO_SET_FEATURES
+#endif
+
+#endif /* < 2.6.39 */
+
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,40) )
+#else /* < 2.6.40 */
+#define HAVE_ETHTOOL_SET_PHYS_ID
+#endif /* < 2.6.40 */
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,1,0) )
@@ -2051,28 +2167,72 @@ static inline void __kc_skb_frag_unref(skb_frag_t *frag)
 #endif
 #endif /* < 3.2.0 */
 
-
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0) )
 typedef u32 netdev_features_t;
 
 #define HAVE_NET_DEVICE_OPS
 
-#ifndef ETHTOOL_MAX_NTUPLE_LIST_ENTRY
-#define ETHTOOL_MAX_NTUPLE_LIST_ENTRY 1024
-#endif
-
-#ifndef ETHTOOL_MAX_NTUPLE_STRING_PER_ENTRY
-#define ETHTOOL_MAX_NTUPLE_STRING_PER_ENTRY 14
-#endif
-
-#else /* ! < 3.3.0 */
+#else /* >= 3.3.0 */
 #define HAVE_INT_NDO_VLAN_RX_ADD_VID
 #ifdef ETHTOOL_SRXNTUPLE
 #undef ETHTOOL_SRXNTUPLE
 #endif
-#endif /* < 3.3.0 */
 
+extern int _kc_ethtool_op_set_flags(struct net_device *, u32, u32);
+#define ethtool_op_set_flags _kc_ethtool_op_set_flags
+extern u32 _kc_ethtool_op_get_flags(struct net_device *);
+#define ethtool_op_get_flags _kc_ethtool_op_get_flags
 
+#endif /* >= 3.3.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0) )
+#else /* >= 3.8.0 */
+
+#define HAVE_NET_DEVICE_OPS
+
+#ifndef __devinit
+#define __devinit
+#endif
+#ifndef __devinitdata
+#define __devinitdata
+#endif
+#ifndef __devinitconst
+#define __devinitconst
+#endif
+#ifndef __devexit
+#define __devexit
+#endif
+#ifndef __devexit_p
+#define __devexit_p
+#endif
+#ifndef __devexitdata
+#define __devexitdata
+#endif
+#ifndef __devexitconst
+#define __devexitconst
+#endif
+
+#endif /* >= 3.8.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0) )
+#else /* >= 3.10.0 */
+#define HAVE_ENCAP_TSO_OFFLOAD
+#endif /* >= 3.10.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,11,0) )
+#else /* >= 3.11.0 */
+#define HAVE_NDO_SET_VF_LINK_STATE
+#endif /* >= 3.11.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0) )
+#else /* >= 3.12.0 */
+#define HAVE_VXLAN_RX_OFFLOAD
+#define HAVE_NDO_GET_PHYS_PORT_ID
+#endif /* >= 3.12.0 */
 
 #endif /* _KCOMPAT_H_ */

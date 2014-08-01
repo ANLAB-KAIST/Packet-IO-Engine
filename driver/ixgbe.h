@@ -456,6 +456,9 @@ struct ixgbe_adapter {
 	struct ixgbe_ring test_tx_ring;
 	struct ixgbe_ring test_rx_ring;
 #endif
+#ifdef HAVE_ETHTOOL_SET_PHYS_ID
+	u32 led_reg;
+#endif
 
 	/* structs defined in ixgbe_hw.h */
 	struct ixgbe_hw hw;
