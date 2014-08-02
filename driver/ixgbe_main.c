@@ -6908,7 +6908,7 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	adapter->numa_node = pcibus_to_node(pdev->bus);
 	set_dev_node(&pdev->dev, adapter->numa_node);
 
-	DPRINTK(PROBE, INFO, "PacketShader IO Engine based on Intel(R) 10 Gigabit Network Connection\n");
+	DPRINTK(PROBE, INFO, "Intel(R) 10 Gigabit Network Connection\n");
 	DPRINTK(PROBE, INFO, "NUMA node = %d, flags = 0x%x\n", 
 			adapter->numa_node, adapter->flags);
 	
