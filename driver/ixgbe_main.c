@@ -67,9 +67,9 @@
 #define IXGBE_NO_HW_RSC 1
 
 
-char ixgbe_driver_name[] = "ixgbe";
+char ixgbe_driver_name[] = "ps_ixgbe";
 static const char ixgbe_driver_string[] =
-	"Intel(R) 10 Gigabit PCI Express Network Driver";
+	"PacketShader IO Engine based on Intel(R) 10 Gigabit PCI Express Network Driver";
 #define DRV_HW_PERF
 
 #ifndef CONFIG_IXGBE_NAPI
@@ -6904,11 +6904,11 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	netdev->vlan_features = 0;
 #endif
 
-	/* XXX: workaround for invalid numa node allocation */
-	adapter->numa_node = (pdev->bus->number & 0x80) ? 1 : 0;
+	/* Detect the NUMA node. */
+	adapter->numa_node = pcibus_to_node(pdev->bus);
 	set_dev_node(&pdev->dev, adapter->numa_node);
 
-	DPRINTK(PROBE, INFO, "Intel(R) 10 Gigabit Network Connection\n");
+	DPRINTK(PROBE, INFO, "PacketShader IO Engine based on Intel(R) 10 Gigabit Network Connection\n");
 	DPRINTK(PROBE, INFO, "NUMA node = %d, flags = 0x%x\n", 
 			adapter->numa_node, adapter->flags);
 	

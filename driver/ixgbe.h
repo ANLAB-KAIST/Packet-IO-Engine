@@ -62,7 +62,7 @@
 
 #include "ixgbe_api.h"
 
-#define PFX "ixgbe: "
+#define PFX "ps_ixgbe: "
 #define DPRINTK(nlevel, klevel, fmt, args...) \
 	((void)((NETIF_MSG_##nlevel & adapter->msg_enable) && \
 	printk(KERN_##klevel PFX "%s: %s: " fmt, adapter->netdev->name, \
