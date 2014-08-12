@@ -228,6 +228,7 @@ void echo()
 			assert(0);
 		}
 
+		if (sink) {
 		for (i = 0; i < ret; i++) {
 			char tmp[6];
 			bool drop = true;
@@ -244,8 +245,7 @@ void echo()
 				memcpy(eth->h_source, tmp, 6);
 			}
 		}
-
-		if (!sink) {
+		} else {
 			chunk.cnt = ret;
 			ret = ps_send_chunk(handle, &chunk);
 			assert(ret >= 0);
