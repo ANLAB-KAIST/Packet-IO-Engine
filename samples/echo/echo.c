@@ -13,6 +13,7 @@
 #include <sys/wait.h>
 #include <numa.h>
 
+#include <linux/if_ether.h>
 #include "psio.h"
 
 #define MAX_CPUS 32
@@ -211,8 +212,9 @@ void echo()
 	chunk.recv_blocking = 1;
 
 	for (;;) {
-		int ret;
-		
+		int ret, i, j;
+		struct ethhdr *eth;
+
 		chunk.cnt = 64;
 		ret = ps_recv_chunk(handle, &chunk);
 
@@ -224,6 +226,23 @@ void echo()
 				break;
 
 			assert(0);
+		}
+
+		for (i = 0; i < ret; i++) {
+			char tmp[6];
+			bool drop = true;
+			eth = (struct ethhdr *)chunk.buf + chunk.info[i].offset;
+
+			for (j = 0; j < num_devices_attached; j++) {
+				drop &= !(memcmp(devices[j].dev_addr, eth->h_dest, ETH_ALEN) == 0);
+			}
+			if (drop) {
+				chunk.info[i].offset = -1;
+			} else {
+				memcpy(tmp, eth->h_dest, 6);
+				memcpy(eth->h_dest, eth->h_source, 6);
+				memcpy(eth->h_source, tmp, 6);
+			}
 		}
 
 		if (!sink) {

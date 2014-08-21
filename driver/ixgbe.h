@@ -62,7 +62,7 @@
 
 #include "ixgbe_api.h"
 
-#define PFX "ixgbe: "
+#define PFX "ps_ixgbe: "
 #define DPRINTK(nlevel, klevel, fmt, args...) \
 	((void)((NETIF_MSG_##nlevel & adapter->msg_enable) && \
 	printk(KERN_##klevel PFX "%s: %s: " fmt, adapter->netdev->name, \
@@ -455,6 +455,9 @@ struct ixgbe_adapter {
 	u32 test_icr;
 	struct ixgbe_ring test_tx_ring;
 	struct ixgbe_ring test_rx_ring;
+#endif
+#ifdef HAVE_ETHTOOL_SET_PHYS_ID
+	u32 led_reg;
 #endif
 
 	/* structs defined in ixgbe_hw.h */

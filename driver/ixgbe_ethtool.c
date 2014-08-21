@@ -37,6 +37,9 @@
 #include <asm/uaccess.h>
 
 #include "ixgbe.h"
+#ifdef ETHTOOL_GMODULEINFO
+#include "ixgbe_phy.h"
+#endif
 
 #ifndef ETH_GSTRING_LEN
 #define ETH_GSTRING_LEN 32
@@ -1035,11 +1038,6 @@ static int ixgbe_get_sset_count(struct net_device *netdev, int sset)
 		return IXGBE_TEST_LEN;
 	case ETH_SS_STATS:
 		return IXGBE_STATS_LEN;
-#ifdef NETIF_F_NTUPLE
-	case ETH_SS_NTUPLE_FILTERS:
-		return (ETHTOOL_MAX_NTUPLE_LIST_ENTRY *
-		        ETHTOOL_MAX_NTUPLE_STRING_PER_ENTRY);
-#endif /* NETIF_F_NTUPLE */
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -2050,27 +2048,58 @@ static int ixgbe_nway_reset(struct net_device *netdev)
 	return 0;
 }
 
+#ifdef HAVE_ETHTOOL_SET_PHYS_ID
+static int ixgbe_set_phys_id(struct net_device *netdev,
+			     enum ethtool_phys_id_state state)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
+
+	switch (state) {
+	case ETHTOOL_ID_ACTIVE:
+		adapter->led_reg = IXGBE_READ_REG(hw, IXGBE_LEDCTL);
+		return 2;
+
+	case ETHTOOL_ID_ON:
+		hw->mac.ops.led_on(hw, IXGBE_LED_ON);
+		break;
+
+	case ETHTOOL_ID_OFF:
+		hw->mac.ops.led_off(hw, IXGBE_LED_ON);
+		break;
+
+	case ETHTOOL_ID_INACTIVE:
+		/* Restore LED settings */
+		IXGBE_WRITE_REG(&adapter->hw, IXGBE_LEDCTL, adapter->led_reg);
+		break;
+	}
+
+	return 0;
+}
+#else
 static int ixgbe_phys_id(struct net_device *netdev, u32 data)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
-	u32 led_reg = IXGBE_READ_REG(&adapter->hw, IXGBE_LEDCTL);
+	struct ixgbe_hw *hw = &adapter->hw;
+	u32 led_reg = IXGBE_READ_REG(hw, IXGBE_LEDCTL);
 	u32 i;
 
 	if (!data || data > 300)
 		data = 300;
 
 	for (i = 0; i < (data * 1000); i += 400) {
-		ixgbe_led_on(&adapter->hw, IXGBE_LED_ON);
+		hw->mac.ops.led_on(hw, IXGBE_LED_ON);
 		msleep_interruptible(200);
-		ixgbe_led_off(&adapter->hw, IXGBE_LED_ON);
+		hw->mac.ops.led_off(hw, IXGBE_LED_ON);
 		msleep_interruptible(200);
 	}
 
 	/* Restore LED settings */
-	IXGBE_WRITE_REG(&adapter->hw, IXGBE_LEDCTL, led_reg);
+	IXGBE_WRITE_REG(hw, IXGBE_LEDCTL, led_reg);
 
 	return 0;
 }
+#endif /* HAVE_ETHTOOL_SET_PHYS_ID */
 
 static int ixgbe_get_coalesce(struct net_device *netdev,
                               struct ethtool_coalesce *ec)
@@ -2230,41 +2259,47 @@ static struct ethtool_ops ixgbe_ethtool_ops = {
 	.set_ringparam          = ixgbe_set_ringparam,
 	.get_pauseparam         = ixgbe_get_pauseparam,
 	.set_pauseparam         = ixgbe_set_pauseparam,
-	.get_rx_csum            = ixgbe_get_rx_csum,
-	.set_rx_csum            = ixgbe_set_rx_csum,
-	.get_tx_csum            = ixgbe_get_tx_csum,
-	.set_tx_csum            = ixgbe_set_tx_csum,
-	.get_sg                 = ethtool_op_get_sg,
-	.set_sg                 = ethtool_op_set_sg,
 	.get_msglevel           = ixgbe_get_msglevel,
 	.set_msglevel           = ixgbe_set_msglevel,
-#ifdef NETIF_F_TSO
-	.get_tso                = ethtool_op_get_tso,
-	.set_tso                = ixgbe_set_tso,
-#endif
 #ifndef HAVE_ETHTOOL_GET_SSET_COUNT
 	.self_test_count        = ixgbe_diag_test_count,
 #endif /* HAVE_ETHTOOL_GET_SSET_COUNT */
 	.self_test              = ixgbe_diag_test,
 	.get_strings            = ixgbe_get_strings,
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,0,0) )
-	.phys_id                = ixgbe_phys_id,
-#endif
+#ifndef HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT
+#ifdef HAVE_ETHTOOL_SET_PHYS_ID
+	.set_phys_id		= ixgbe_set_phys_id,
+#else
+	.phys_id		= ixgbe_phys_id,
+#endif /* HAVE_ETHTOOL_SET_PHYS_ID */
+#endif /* HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT */
 #ifndef HAVE_ETHTOOL_GET_SSET_COUNT
 	.get_stats_count        = ixgbe_get_stats_count,
 #else /* HAVE_ETHTOOL_GET_SSET_COUNT */
 	.get_sset_count         = ixgbe_get_sset_count,
-#endif
+#endif /* HAVE_ETHTOOL_GET_SSET_COUNT */
 	.get_ethtool_stats      = ixgbe_get_ethtool_stats,
 #ifdef ETHTOOL_GPERMADDR
 	.get_perm_addr          = ethtool_op_get_perm_addr,
 #endif
 	.get_coalesce           = ixgbe_get_coalesce,
 	.set_coalesce           = ixgbe_set_coalesce,
+#ifndef HAVE_NDO_SET_FEATURES
+	.get_rx_csum            = ixgbe_get_rx_csum,
+	.set_rx_csum            = ixgbe_set_rx_csum,
+	.get_tx_csum            = ixgbe_get_tx_csum,
+	.set_tx_csum            = ixgbe_set_tx_csum,
+	.get_sg                 = ethtool_op_get_sg,
+	.set_sg                 = ethtool_op_set_sg,
+#ifdef NETIF_F_TSO
+	.get_tso                = ethtool_op_get_tso,
+	.set_tso                = ixgbe_set_tso,
+#endif
 #ifdef ETHTOOL_GFLAGS
 	.get_flags              = ethtool_op_get_flags,
 	.set_flags              = ixgbe_set_flags,
 #endif
+#endif /* HAVE_NDO_SET_FEATURES */
 };
 
 void ixgbe_set_ethtool_ops(struct net_device *netdev)

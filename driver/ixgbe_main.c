@@ -67,9 +67,9 @@
 #define IXGBE_NO_HW_RSC 1
 
 
-char ixgbe_driver_name[] = "ixgbe";
+char ixgbe_driver_name[] = "ps_ixgbe";
 static const char ixgbe_driver_string[] =
-	"Intel(R) 10 Gigabit PCI Express Network Driver";
+	"PacketShader IO Engine based on Intel(R) 10 Gigabit PCI Express Network Driver";
 #define DRV_HW_PERF
 
 #ifndef CONFIG_IXGBE_NAPI
@@ -2803,7 +2803,8 @@ static void ixgbe_configure_rx(struct ixgbe_adapter *adapter)
 #endif /* IXGBE_NO_HW_RSC */
 }
 
-#ifdef NETIF_F_HW_VLAN_TX
+#if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
+#ifdef HAVE_VLAN_RX_REGISTER
 static void ixgbe_vlan_rx_register(struct net_device *netdev,
                                    struct vlan_group *grp)
 {
@@ -2838,7 +2839,10 @@ static void ixgbe_vlan_rx_register(struct net_device *netdev,
 	if (!test_bit(__IXGBE_DOWN, &adapter->state))
 		ixgbe_irq_enable(adapter, true, true);
 }
+#endif /* HAVE_VLAN_RX_REGISTER */
 
+#if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
+#ifdef HAVE_INT_NDO_VLAN_RX_ADD_VID
 static void ixgbe_vlan_rx_add_vid(struct net_device *netdev, u16 vid)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
@@ -2899,11 +2903,13 @@ static void ixgbe_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
 		}
 	}
 }
+#endif /* HAVE_INT_NDO_VLAN_RX_ADD_VID */
+#endif /* defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX) */
 
 static void ixgbe_restore_vlan(struct ixgbe_adapter *adapter)
 {
+#ifdef HAVE_VLAN_RX_REGISTER
 	struct ixgbe_hw *hw = &adapter->hw;
-
 	ixgbe_vlan_rx_register(adapter->netdev, adapter->vlgrp);
 
 	/* add vlan ID 0 so we always accept priority-tagged traffic */
@@ -2920,9 +2926,10 @@ static void ixgbe_restore_vlan(struct ixgbe_adapter *adapter)
 			ixgbe_vlan_rx_add_vid(adapter->netdev, vid);
 		}
 	}
+#endif
 }
 
-#endif
+#endif /* defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX) */
 
 static u8 *ixgbe_addr_list_itr(struct ixgbe_hw *hw, u8 **mc_addr_ptr, u32 *vmdq)
 {
@@ -6403,7 +6410,9 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_stop		= &ixgbe_close,
 	.ndo_start_xmit		= &ixgbe_xmit_frame_ps,
 	.ndo_get_stats		= &ixgbe_get_stats,
+#ifdef HAVE_SET_RX_MODE
 	.ndo_set_rx_mode	= &ixgbe_set_rx_mode,
+#endif
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,0,0) )
 	.ndo_set_multicast_list	= &ixgbe_set_rx_mode,
 #endif
@@ -6413,18 +6422,26 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 #ifdef ETHTOOL_OPS_COMPAT
 	.ndo_do_ioctl		= &ixgbe_ioctl,
 #endif
+#ifdef HAVE_TX_TIMEOUT
 	.ndo_tx_timeout		= &ixgbe_tx_timeout,
-
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,0,0) )
-	ndo_vlan_rx_register	= &ixgbe_vlan_rx_register,
 #endif
-
+#if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
+#ifdef HAVE_VLAN_RX_REGISTER
+	.ndo_vlan_rx_register	= &ixgbe_vlan_rx_register,
 	.ndo_vlan_rx_add_vid	= &ixgbe_vlan_rx_add_vid,
 	.ndo_vlan_rx_kill_vid	= &ixgbe_vlan_rx_kill_vid,
+#endif
+#endif
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller	= &ixgbe_netpoll,
 #endif
+#ifdef IXGBE_FCOE
 	.ndo_select_queue	= &ixgbe_select_queue,
+#else
+#ifndef HAVE_MQPRIO
+	.ndo_select_queue	= __netdev_pick_tx,
+#endif
+#endif
 };
 
 #endif /* HAVE_NET_DEVICE_OPS */
@@ -6452,7 +6469,7 @@ void ixgbe_assign_netdev_ops(struct net_device *dev)
 #ifdef HAVE_TX_TIMEOUT
 	dev->tx_timeout = &ixgbe_tx_timeout;
 #endif
-#ifdef NETIF_F_HW_VLAN_TX
+#if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
 	dev->vlan_rx_register = &ixgbe_vlan_rx_register;
 	dev->vlan_rx_add_vid = &ixgbe_vlan_rx_add_vid;
 	dev->vlan_rx_kill_vid = &ixgbe_vlan_rx_kill_vid;
@@ -6887,8 +6904,8 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	netdev->vlan_features = 0;
 #endif
 
-	/* XXX: workaround for invalid numa node allocation */
-	adapter->numa_node = (pdev->bus->number & 0x80) ? 1 : 0;
+	/* Detect the NUMA node. */
+	adapter->numa_node = pcibus_to_node(pdev->bus);
 	set_dev_node(&pdev->dev, adapter->numa_node);
 
 	DPRINTK(PROBE, INFO, "Intel(R) 10 Gigabit Network Connection\n");
