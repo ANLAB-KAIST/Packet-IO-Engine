@@ -100,7 +100,8 @@ static bool randomize_flows = true; /** example: set false when testing all-matc
 struct ps_handle handles[PS_MAX_CPUS];
 
 /* pcap_replaying: related variable & structs */
-static bool pcap_replaying = false;
+static bool mode_pkt_gen = false;
+static bool mode_pcap_replaying = false;
 static bool pcap_looping = false;
 char pcap_filename[MAX_PATH] = {0, };
 char *pcap_alloc_file;
@@ -351,13 +352,13 @@ void done()
 		total_tx_packets += handle->tx_packets[ifindex];
 	}
 
-//	if (pcap_replaying) {
+//	if (mode_pcap_replaying) {
 //		printf("CPU#%d: current pkt info index: %ld\n", my_cpu, pkt_info_arr_index);
 //	}
 	printf("----------\n");
 	printf("CPU %d: total %ld packets transmitted\n", 
 			my_cpu, total_tx_packets);
-	if (pcap_replaying) {
+	if (mode_pcap_replaying) {
 		printf("CPU %d: total %ld packets not transmitted due to TX drop\n", my_cpu, pcap_num_pkts_not_sent);	// pcap_replaying 
 	}
 
@@ -799,7 +800,6 @@ void send_packets(long packets,
 			else
 				chunk.cnt = chunk_size;
 
-			// TODO: implement throughput regulation for random sized packets.
 			/// pcap_replaying: TODO: handle throughput regulation for pcap replaying
 			if (offered_throughput > 0) {
 				unsigned need_to_send_bytes = check_rate(i);
@@ -823,9 +823,7 @@ void send_packets(long packets,
 				int cur_pkt_size;
 
 				/// pcap_replaying
-				/* TODO: limit program option.. "-v"(ip version) and "-f"(# of flows) options can't be used 
-						with pcap replay at the same time. */
-				if (pcap_replaying) {
+				if (mode_pcap_replaying) {
 					// cur_pkt_size is determined from pcap file
 					pcap_pkt_info_t *packet;
 					packet = &pcap_pkt_info_arr[pkt_info_arr_index];
@@ -833,7 +831,6 @@ void send_packets(long packets,
 					chunk.info[j].offset = offset;
 					chunk.info[j].len = cur_pkt_size;
 				
-                    // If you want to control specific field of packet to be sent.. 
 					build_packet_from_pcap(chunk.buf + chunk.info[j].offset, pcap_alloc_file + packet->offset_pkt_content, packet->caplen, packet->len);
 					
                     if (pkt_info_arr_index < (pcap_num_pkts_total-1-num_cpus)) {
@@ -917,7 +914,7 @@ void send_packets(long packets,
 					receive_packets(handle, &chunk, packets <= sent);
 			}
 
-			if ( (pcap_replaying) && (pkt_info_arr_index >= (pcap_num_pkts_total-1-num_cpus))) {
+			if ( (mode_pcap_replaying) && (pkt_info_arr_index >= (pcap_num_pkts_total-1-num_cpus))) {
 				if (pcap_looping) {
 					sent = 0;
 					pkt_info_arr_index = my_cpu;
@@ -962,7 +959,7 @@ void print_usage(char *program)
 			program);
 
 	/// pcap_replaying
-	fprintf(stderr, "Or, to replay pcap file: -i all|dev1 [-i dev2] ... --pcap <pcap_file_name> [--loop]");
+	fprintf(stderr, "Or, to replay pcap file: -i all|dev1 [-i dev2] ... --pcap <pcap_file_name> [--loop]\n");
 	///
 
 	fprintf(stderr, "  default <num_packets> is 0. (0 = infinite)\n");
@@ -1012,36 +1009,7 @@ int main(int argc, char **argv)
 	/* Argument parsing. */
 
 	for (i = 1; i < argc; i += 2) {
-		if (!strcmp(argv[i], "-n")) {
-			num_packets = atoi(argv[i + 1]);
-			assert(num_packets >= 0);
-			if (num_packets < num_cpus / num_devices)
-				fprintf(stderr, "WARNING: Too few packets would not utilize some interfaces.\n");
-		} else if (!strcmp(argv[i], "-s")) {
-			chunk_size = atoi(argv[i + 1]);
-			assert(chunk_size >= 1 && chunk_size <= PS_MAX_CHUNK_SIZE);
-		} else if (!strcmp(argv[i], "-p")) {
-			packet_size = atoi(argv[i + 1]);
-			min_packet_size = packet_size;
-			assert(packet_size >= 60 && packet_size <= 1514);
-		} else if (!strcmp(argv[i], "--min-pkt-size")) {
-			min_packet_size = atoi(argv[i + 1]);
-			assert(min_packet_size >= 60 && min_packet_size <= packet_size);
-		} else if (!strcmp(argv[i], "-f")) {
-			num_flows = atoi(argv[i + 1]);
-			assert(num_flows >= 0 && num_flows <= MAX_FLOWS);
-		} else if (!strcmp(argv[i], "-r")) {
-			randomize_flows = atoi(argv[i + 1]);
-			assert(randomize_flows == false || randomize_flows == true);
-		} else if (!strcmp(argv[i], "-v")) {
-			ip_version = atoi(argv[i + 1]);
-			assert(ip_version == 4 || ip_version == 6);
-		} else if (!strcmp(argv[i], "-l")) {
-			latency_measure = atoi(argv[i + 1]);
-			assert(latency_measure == 0 || latency_measure == 1);
-			if (latency_measure)
-				magic_number = (uint32_t)ps_rdtsc();
-		} else if (!strcmp(argv[i], "-i")) {
+        if (!strcmp(argv[i], "-i")) {
 			int ifindex = -1;
 			int j;
 
@@ -1073,32 +1041,75 @@ int main(int argc, char **argv)
 
 			devices_registered[num_devices_registered] = ifindex;
 			num_devices_registered ++;
-		} else if (!strcmp(argv[i], "-c")) {
-			loop_count = atoi(argv[i + 1]);
-			assert(loop_count >= 1);
-		} else if (!strcmp(argv[i], "-t")) {
-			time_limit = atoi(argv[i + 1]);
-			assert(time_limit >= 0);
-		} else if (!strcmp(argv[i], "-g")) {
-			offered_throughput = atof(argv[i + 1]);
-			assert(offered_throughput > 0);
-		} else if (!strcmp(argv[i], "--debug")) {
-			debug = true;
-			i--;
-		} else if (!strcmp(argv[i], "--neighbor-conf")) {
-			strncpy(neighbor_conf_filename, argv[i + 1], MAX_PATH);
-			assert(strnlen(neighbor_conf_filename, MAX_PATH) > 0);
+		} 
 		/// pcap_replaying
-		} else if (!strcmp(argv[i], "--loop")) {
+        else if (!strcmp(argv[i], "--loop")) {
 			pcap_looping = true;
+            if ( !mode_pcap_replaying || mode_pkt_gen)
+               print_usage(argv[0]); 
 			i--;
 		} else if (!strcmp(argv[i], "--pcap")) {
+            if (mode_pkt_gen)
+               print_usage(argv[0]); 
+			mode_pcap_replaying = true;
 			strncpy(pcap_filename, argv[i + 1], MAX_PATH);
-			assert(strnlen(pcap_filename, MAX_PATH) > 0);
-			pcap_replaying = true;
+			assert((strnlen(pcap_filename, MAX_PATH) > 0));
 		///
-		} else
-			print_usage(argv[0]);
+		} else {
+            if (mode_pcap_replaying == true) {
+                fprintf(stderr, "Currently some options can't be used with pcap replaying mode. Check usage.\n");
+                print_usage(argv[0]);
+            }
+            mode_pkt_gen = true;
+ 
+            if (!strcmp(argv[i], "-n")) {
+                num_packets = atoi(argv[i + 1]);
+                assert(num_packets >= 0);
+                if (num_packets < num_cpus / num_devices)
+                    fprintf(stderr, "WARNING: Too few packets would not utilize some interfaces.\n");
+            } else if (!strcmp(argv[i], "-s")) {
+                chunk_size = atoi(argv[i + 1]);
+                assert(chunk_size >= 1 && chunk_size <= PS_MAX_CHUNK_SIZE);
+            } else if (!strcmp(argv[i], "-p")) {
+                packet_size = atoi(argv[i + 1]);
+                min_packet_size = packet_size;
+                assert(packet_size >= 60 && packet_size <= 1514);
+            } else if (!strcmp(argv[i], "--min-pkt-size")) {
+                min_packet_size = atoi(argv[i + 1]);
+                assert(min_packet_size >= 60 && min_packet_size <= packet_size);
+            } else if (!strcmp(argv[i], "-f")) {
+                num_flows = atoi(argv[i + 1]);
+                assert(num_flows >= 0 && num_flows <= MAX_FLOWS);
+            } else if (!strcmp(argv[i], "-r")) {
+                randomize_flows = atoi(argv[i + 1]);
+                assert(randomize_flows == false || randomize_flows == true);
+            } else if (!strcmp(argv[i], "-v")) {
+                ip_version = atoi(argv[i + 1]);
+                assert(ip_version == 4 || ip_version == 6);
+            } else if (!strcmp(argv[i], "-l")) {
+                latency_measure = atoi(argv[i + 1]);
+                assert(latency_measure == 0 || latency_measure == 1);
+                if (latency_measure)
+                    magic_number = (uint32_t)ps_rdtsc();
+            } else if (!strcmp(argv[i], "-c")) {
+                loop_count = atoi(argv[i + 1]);
+                assert(loop_count >= 1);
+            } else if (!strcmp(argv[i], "-t")) {
+                time_limit = atoi(argv[i + 1]);
+                assert(time_limit >= 0);
+            } else if (!strcmp(argv[i], "-g")) {
+                offered_throughput = atof(argv[i + 1]);
+                assert(offered_throughput > 0);
+            } else if (!strcmp(argv[i], "--debug")) {
+                debug = true;
+                i--;
+            } else if (!strcmp(argv[i], "--neighbor-conf")) {
+                strncpy(neighbor_conf_filename, argv[i + 1], MAX_PATH);
+                assert(strnlen(neighbor_conf_filename, MAX_PATH) > 0);
+            } else { 
+                print_usage(argv[0]);
+            }
+        }
 	}
 
 	if (!randomize_flows && num_flows == 0) {
@@ -1114,18 +1125,6 @@ int main(int argc, char **argv)
 		fprintf(stderr, "No devices registered!\n");
 		print_usage(argv[0]);
 	}
-
-	/// pcap_replaying
-	if (pcap_replaying && num_flows != 0) {
-		fprintf(stderr, "Number of flows cannot be set when replaying pcap file.\n");
-		exit(1);
-	}
-	if (pcap_replaying && offered_throughput > 0) {
-		fprintf(stderr, "Throughput regulation is not supported when replaying pcap file.\n");
-		exit(1);
-	}
-	// TODO: restrict option (some options can't be used with -pcap)
-	///
 
 	/* Read neighbor configuration from file.
 	 * We currently do not use IP addresses since experimenting a router uses random IP
@@ -1169,7 +1168,7 @@ int main(int argc, char **argv)
 	assert(num_neighbors >= num_devices_registered);
 
 	/// pcap_replaying: whole pcap file is allocated to memory & indexed before replaying starts
-	if (pcap_replaying) {
+	if (mode_pcap_replaying) {
 		preprocess_pcap_file();
 	}
 	///
@@ -1232,7 +1231,7 @@ int main(int argc, char **argv)
 	}
 
 	/// pcap_replaying
-	if (pcap_replaying) {
+	if (mode_pcap_replaying) {
 		if (pcap_alloc_file != 0) {
 			free(pcap_alloc_file);
 			pcap_alloc_file = 0;
