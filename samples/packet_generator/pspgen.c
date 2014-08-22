@@ -229,7 +229,7 @@ int ps_bind_cpu(int cpu) {
 	CPU_ZERO_S(setsize, cmask);
 	CPU_SET_S(cpu, setsize, cmask);
 
-	ret = sched_setaffinity(0, ncpu, cmask);
+	ret = sched_setaffinity(0, setsize, cmask);
 
 	CPU_FREE(cmask);
 
