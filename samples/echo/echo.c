@@ -27,7 +27,8 @@ int devices_attached[PS_MAX_DEVICES];
 struct ps_handle handles[PS_MAX_CPUS];
 
 int my_cpu;
-int sink;
+int sink = 0;
+int echoall = 0;
 
 int get_num_cpus()
 {
@@ -76,9 +77,10 @@ int bind_cpu(int cpu)
 
 void print_usage(char *argv0)
 {
-	fprintf(stderr, "Usage: %s [-s] <interface to echo> <...>\n",
+	fprintf(stderr, "Usage: %s [-s/-a] <interface to echo> <...>\n",
 			argv0);
-	fprintf(stderr, "  -s option makes this program work as a sink\n");
+	fprintf(stderr, "  -s option makes this program work as a sink. Exclude -a.\n");
+	fprintf(stderr, "  -a option forces all packets to be echoed back. Exclude -s.\n");
 
 	exit(2);
 }
@@ -93,7 +95,13 @@ void parse_opt(int argc, char **argv)
 	if (strcmp(argv[1], "-s") == 0) {
 		sink = 1;
 		printf("just dropping incoming packets...\n");
+	} else if (strcmp(argv[1], "-a") == 0) {
+		echoall = 1;
+		printf("echo back all packets");
 	}
+
+	if ((sink || echoall) && argc > 2 && argv[2][1] == '-')
+		print_usage(argv[0]);	
 
 	for (i = 1 + sink; i < argc; i++) {
 		int ifindex = -1;
@@ -228,20 +236,24 @@ void echo()
 			assert(0);
 		}
 
-		for (i = 0; i < ret; i++) {
-			char tmp[6];
-			bool drop = true;
-			eth = (struct ethhdr *)chunk.buf + chunk.info[i].offset;
+		if (!echoall) {
+			for (i = 0; i < ret; i++) {
+				char tmp[6];
+				bool drop = true;
+				eth = (struct ethhdr *)chunk.buf + chunk.info[i].offset;
 
-			for (j = 0; j < num_devices_attached; j++) {
-				drop &= !(memcmp(devices[j].dev_addr, eth->h_dest, ETH_ALEN) == 0);
-			}
-			if (drop) {
-				chunk.info[i].offset = -1;
-			} else {
-				memcpy(tmp, eth->h_dest, 6);
-				memcpy(eth->h_dest, eth->h_source, 6);
-				memcpy(eth->h_source, tmp, 6);
+				if (!sink)
+					for (j = 0; j < num_devices_attached; j++) {
+						drop &= !(memcmp(devices[j].dev_addr, eth->h_dest, ETH_ALEN) == 0);
+					}
+
+				if (drop) {
+					chunk.info[i].offset = -1;
+				} else {
+					memcpy(tmp, eth->h_dest, 6);
+					memcpy(eth->h_dest, eth->h_source, 6);
+					memcpy(eth->h_source, tmp, 6);
+				}
 			}
 		}
 
