@@ -28,7 +28,7 @@ struct ps_handle handles[PS_MAX_CPUS];
 
 int my_cpu;
 int sink = 0;
-int echoall = 0;
+int echo_as_is = 0;
 
 int get_num_cpus()
 {
@@ -80,7 +80,7 @@ void print_usage(char *argv0)
 	fprintf(stderr, "Usage: %s [-s/-a] <interface to echo> <...>\n",
 			argv0);
 	fprintf(stderr, "  -s option makes this program work as a sink. Exclude -a.\n");
-	fprintf(stderr, "  -a option forces all packets to be echoed back. Exclude -s.\n");
+	fprintf(stderr, "  -a option echoes all packets \"as-is\" (without MAC rewriting). Exclude -s.\n");
 
 	exit(2);
 }
@@ -96,11 +96,11 @@ void parse_opt(int argc, char **argv)
 		sink = 1;
 		printf("just dropping incoming packets...\n");
 	} else if (strcmp(argv[1], "-a") == 0) {
-		echoall = 1;
-		printf("echo back all packets");
+		echo_as_is = 1;
+		printf("echo back all packets without MAC rewriting");
 	}
 
-	if ((sink || echoall) && argc > 2 && argv[2][1] == '-')
+	if ((sink || echo_as_is) && argc > 2 && argv[2][1] == '-')
 		print_usage(argv[0]);	
 
 	for (i = 1 + sink; i < argc; i++) {
@@ -236,7 +236,7 @@ void echo()
 			assert(0);
 		}
 
-		if (!echoall) {
+		if (!echo_as_is) {
 			for (i = 0; i < ret; i++) {
 				char tmp[6];
 				bool drop = true;
