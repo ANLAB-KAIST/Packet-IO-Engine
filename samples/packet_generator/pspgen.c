@@ -99,10 +99,14 @@ static bool randomize_flows = true; /** example: set false when testing all-matc
 
 struct ps_handle handles[PS_MAX_CPUS];
 
-/* pcap_replaying: related variable & structs */
-static bool mode_pkt_gen = false;
-static bool mode_pcap_replaying = false;
-static bool pcap_looping = false;
+/* Trace replay-related variable & structs */
+
+static enum {
+	UNSET = 0,
+	PKTGEN = 1,
+	TRACE_REPLAY = 2,
+} mode;
+static bool repeat_trace = false;
 char pcap_filename[MAX_PATH] = {0, };
 char *pcap_alloc_file;
 size_t pcap_filesize;
@@ -201,9 +205,9 @@ int ps_get_num_cpus() {
 	long num_physical_cpu = sysconf(_SC_NPROCESSORS_ONLN);
 	int hyper = check_hyperthreading();
 	if (hyper) {
-		num_physical_cpu /= 2;	
+		num_physical_cpu /= 2;
 	}
-	
+
 	//printf("# of cpus: %d, hyperthreading: %d\n", num_physical_cpu, hyper);
 	return num_physical_cpu;
 }
@@ -270,7 +274,7 @@ bool ps_in_samenode(int cpu, int ifindex)
 	return cpu_node == if_node;
 }
 
-/// pcap_replaying	
+/// pcap_replaying
 void preprocess_pcap_file() {
 	FILE *file;
 	size_t read_size;
@@ -280,7 +284,7 @@ void preprocess_pcap_file() {
 
 	pcap_num_pkts_total = 0;
 	long index = 0;
-	
+
 	printf("Now preprocessing pcap file..\n");
 
 	file = fopen(pcap_filename, "r");
@@ -301,10 +305,10 @@ void preprocess_pcap_file() {
 		exit(1);
 	}
 
-    pcap_file_header_t *pcap_file_hdr;
-    pcap_file_hdr = (pcap_file_header_t *)pcap_alloc_file;
-    printf("Link type of packet trace: %u\n", pcap_file_hdr->linktype);
-    pcap_file_linktype = pcap_file_hdr->linktype;
+	pcap_file_header_t *pcap_file_hdr;
+	pcap_file_hdr = (pcap_file_header_t *)pcap_alloc_file;
+	printf("Link type of packet trace: %u\n", pcap_file_hdr->linktype);
+	pcap_file_linktype = pcap_file_hdr->linktype;
 
 	// 1. look through pcap file & count whole number of packets
 	offset += sizeof(pcap_file_header_t);
@@ -313,7 +317,7 @@ void preprocess_pcap_file() {
 		//printf("Packet #%d captured length: %d\n", pcap_num_pkts_total+1, captured_pkt_hdr->caplen);
 		offset += sizeof(pcap_pkthdr_t);
 		offset += captured_pkt_hdr->caplen;
-		pcap_num_pkts_total++;	
+		pcap_num_pkts_total++;
 	}
 
 	// 2. alloc packet info array
@@ -330,7 +334,7 @@ void preprocess_pcap_file() {
 		pkt_info->caplen = captured_pkt_hdr->caplen;
 		pkt_info->len	= captured_pkt_hdr->len;
 		offset += captured_pkt_hdr->caplen;
-		index++;	
+		index++;
 	}
 
 	printf("File size: %zu, number of packet: %ld\n", pcap_filesize, pcap_num_pkts_total);
@@ -352,14 +356,11 @@ void done()
 		total_tx_packets += handle->tx_packets[ifindex];
 	}
 
-//	if (mode_pcap_replaying) {
-//		printf("CPU#%d: current pkt info index: %ld\n", my_cpu, pkt_info_arr_index);
-//	}
 	printf("----------\n");
-	printf("CPU %d: total %ld packets transmitted\n", 
+	printf("CPU %d: total %ld packets transmitted\n",
 			my_cpu, total_tx_packets);
-	if (mode_pcap_replaying) {
-		printf("CPU %d: total %ld packets not transmitted due to TX drop\n", my_cpu, pcap_num_pkts_not_sent);	// pcap_replaying 
+	if (mode == TRACE_REPLAY) {
+		printf("CPU %d: total %ld packets not transmitted due to TX drop\n", my_cpu, pcap_num_pkts_not_sent);	// pcap_replaying
 	}
 
 	for (i = 0; i < num_devices_registered; i++) {
@@ -370,11 +371,11 @@ void done()
 			continue;
 
 		printf("  %s: %ld packets "
-				"(%ld chunks, %.2f packets per chunk)\n", 
-				dev, 
+				"(%ld chunks, %.2f packets per chunk)\n",
+				dev,
 				handle->tx_packets[ifindex],
 				handle->tx_chunks[ifindex],
-				handle->tx_packets[ifindex] / 
+				handle->tx_packets[ifindex] /
 				  (double)handle->tx_chunks[ifindex]);
 	}
 
@@ -434,7 +435,7 @@ void update_stats(struct ps_handle *handle)
 
 	int i;
 
-	if (++counter % 100 != 0) 
+	if (++counter % 100 != 0)
 		return;
 
 	assert(gettimeofday(&tv, NULL) == 0);
@@ -459,7 +460,7 @@ void update_stats(struct ps_handle *handle)
 
 		printf("CPU %d: %8ld pps, %6.3f Gbps "
 				"(%.2f packets per chunk)",
-				my_cpu, 
+				my_cpu,
 				pps,
 				(bps + (pps * 24) * 8) / 1000000000.0,
 				total_tx_packets / (double)counter);
@@ -485,7 +486,7 @@ void update_stats(struct ps_handle *handle)
 			bps = (handle->tx_bytes[ifindex] -
 					last_device_tx_bytes[ifindex]) * 8;
 
-			printf("  %s:%8ld pps,%6.3f Gbps", 
+			printf("  %s:%8ld pps,%6.3f Gbps",
 					dev,
 					pps,
 					(bps + (pps * 24) * 8) / 1000000000.0);
@@ -512,7 +513,7 @@ void update_stats(struct ps_handle *handle)
 	}
 }
 
-static inline uint32_t myrand(uint64_t *seed) 
+static inline uint32_t myrand(uint64_t *seed)
 {
 	*seed = *seed * 1103515245 + 12345;
 	return (uint32_t)(*seed >> 32);
@@ -526,7 +527,7 @@ void receive_packets(struct ps_handle *handle, struct ps_chunk *chunk, int block
 
 	while (1) {
 		int ret = ps_recv_chunk(handle, chunk);
-		
+
 		if (ret < 0) {
 			if (errno == EINTR)
 				continue;
@@ -562,7 +563,7 @@ void build_packet(char *buf, int size, uint64_t *seed)
 	/* Build an ethernet header */
 	eth = (struct ethhdr *)buf;
 	eth->h_proto = HTONS(ETH_P_IP);
-	
+
 	/* Note: eth->h_source and eth->h_dest are written at send_packets(). */
 
 	/* Build an IPv4 header. */
@@ -663,13 +664,12 @@ void build_packet_v6(char *buf, int size, uint64_t *seed)
 	memset(content, 0xee, 1);  /* To indicate the beginning of packet content area. */
 }
 
-/// pcap_replaying
-void build_packet_from_pcap(char *buf, char* packet, int captured_size, int actual_size) {
+void build_packet_from_trace(char *buf, char* packet, int captured_size, int actual_size) {
     // Copy the whole captured pcap packet.
     // It's okay because currently we only use ethernet address in routing, which is overwritten after packet is built.
     size_t filled_size = 0;
 
-    if (pcap_file_linktype == 1) /* LINKTYPE_ETHERNET */ 
+    if (pcap_file_linktype == 1) /* LINKTYPE_ETHERNET */
     {
         memcpy(buf, packet, captured_size);
         filled_size = captured_size;
@@ -693,7 +693,7 @@ void build_packet_from_pcap(char *buf, char* packet, int captured_size, int actu
     }
     else {
         printf("Linktype %d of pcap file is unhandled currently.\n", pcap_file_linktype);
-        exit(1); 
+        exit(1);
     }
 
     if (filled_size < actual_size) {
@@ -706,7 +706,7 @@ void build_packet_from_pcap(char *buf, char* packet, int captured_size, int actu
 
 #define MAX_FLOWS 16384
 
-void send_packets(long packets, 
+void send_packets(long packets,
 		int chunk_size,
 		int packet_size,
 		int min_packet_size,
@@ -732,12 +732,12 @@ void send_packets(long packets,
 	pkt_info_arr_index = my_cpu;
 	pcap_num_pkts_not_sent = 0;
 	///
-	
+
 	// NOTE: If the num_flows option is used, the flow is generated
 	// with maximum sized packets and those sizes are cut randomly when
 	// filling the output chunk.
 	for (i = 0; i < num_flows; i++) {
-		if (ip_version == 4) 
+		if (ip_version == 4)
 			build_packet(packet[i], packet_size, &seed);
 		else if (ip_version == 6)
 			build_packet_v6(packet[i], packet_size, &seed);
@@ -818,31 +818,29 @@ void send_packets(long packets,
 			}
 
 			/* Fill the chunk with packets generated. */
-			size_t offset = 0;	
+			size_t offset = 0;
 			for (j = 0; j < chunk.cnt; j++) {
 				int cur_pkt_size;
 
-				/// pcap_replaying
-				if (mode_pcap_replaying) {
-					// cur_pkt_size is determined from pcap file
-					pcap_pkt_info_t *packet;
-					packet = &pcap_pkt_info_arr[pkt_info_arr_index];
+				if (mode == TRACE_REPLAY) {
+					pcap_pkt_info_t *packet = &pcap_pkt_info_arr[pkt_info_arr_index];
+
 					cur_pkt_size = packet->len;
 					chunk.info[j].offset = offset;
 					chunk.info[j].len = cur_pkt_size;
-				
-					build_packet_from_pcap(chunk.buf + chunk.info[j].offset, pcap_alloc_file + packet->offset_pkt_content, packet->caplen, packet->len);
-					
-                    if (pkt_info_arr_index < (pcap_num_pkts_total-1-num_cpus)) {
+
+					build_packet_from_trace(chunk.buf + chunk.info[j].offset,
+								pcap_alloc_file + packet->offset_pkt_content,
+								packet->caplen, packet->len);
+
+					if (pkt_info_arr_index < (pcap_num_pkts_total - 1 - num_cpus)) {
 						pkt_info_arr_index += num_cpus;
 					}
 					offset = PS_ALIGN(offset + cur_pkt_size, 64);
-					//printf("pcap_replaying: captured length:%d, pkt length:%d, offset:%d\n", header.caplen, header.len, offset);
-				}
-				///
-				else { 
+				} else {
 					if (min_packet_size < packet_size)
-						cur_pkt_size = random() % (packet_size - min_packet_size) + min_packet_size;
+						cur_pkt_size = random() % (packet_size - min_packet_size)
+							       + min_packet_size;
 					else
 						cur_pkt_size = packet_size;
 					chunk.info[j].len = cur_pkt_size;
@@ -852,15 +850,15 @@ void send_packets(long packets,
 					if (num_flows == 0) {
 						if (ip_version == 4) {
 							build_packet(chunk.buf + chunk.info[j].offset,
-									 cur_pkt_size, &seed);
+								     cur_pkt_size, &seed);
 						} else {
 							build_packet_v6(chunk.buf + chunk.info[j].offset,
-								cur_pkt_size, &seed);
+									cur_pkt_size, &seed);
 						}
 					} else {
-						memcpy_aligned(chunk.buf + chunk.info[j].offset, 
-							packet[(next_flow[i] + j) % num_flows], 
-							cur_pkt_size);
+						memcpy_aligned(chunk.buf + chunk.info[j].offset,
+							       packet[(next_flow[i] + j) % num_flows],
+							       cur_pkt_size);
 					}
 				}
 
@@ -903,7 +901,7 @@ void send_packets(long packets,
 
 			/// pcap_replaying: checking the number of packets not sent
 			pcap_num_pkts_not_sent += chunk.cnt - ret;
-			// TODO: re-try to send remaining packets	
+			// TODO: re-try to send remaining packets
 			///
 
 			update_stats(handle);
@@ -914,8 +912,8 @@ void send_packets(long packets,
 					receive_packets(handle, &chunk, packets <= sent);
 			}
 
-			if ( (mode_pcap_replaying) && (pkt_info_arr_index >= (pcap_num_pkts_total-1-num_cpus))) {
-				if (pcap_looping) {
+			if ( (mode == TRACE_REPLAY) && (pkt_info_arr_index >= (pcap_num_pkts_total - 1 - num_cpus))) {
+				if (repeat_trace) {
 					sent = 0;
 					pkt_info_arr_index = my_cpu;
 				}
@@ -941,7 +939,9 @@ void send_packets(long packets,
 
 void print_usage(char *program)
 {
-	fprintf(stderr, "usage: %s "
+	fprintf(stderr, "To use in packet-generator (pktgen) mode:\n");
+	fprintf(stderr, "  %s "
+			"-i all|dev1 [-i dev2] ... "
 			"[-n <num_packets>] "
 			"[-s <chunk_size>] "
 			"[-p <packet_size>] "
@@ -954,13 +954,10 @@ void print_usage(char *program)
 			"[-t <seconds>] "
 			"[-g <offered throughput>] "
 			"[--debug] "
-			"[--neighbor-conf <neighbor config file>] "
-			"-i all|dev1 [-i dev2] ...\n",
+			"[--neighbor-conf <neighbor config file>]\n",
 			program);
-
-	/// pcap_replaying
-	fprintf(stderr, "Or, to replay pcap file: -i all|dev1 [-i dev2] ... --pcap <pcap_file_name> [--loop]\n");
-	///
+	fprintf(stderr, "\nTo replay traces (currently only supports pcap):\n");
+	fprintf(stderr, "  %s -i all|dev1 [-i dev2] ... --trace <file_name> [--repeat] [--debug]\n\n", program);
 
 	fprintf(stderr, "  default <num_packets> is 0. (0 = infinite)\n");
 	fprintf(stderr, "    (note: <num_packets> is a per-cpu value.)\n");
@@ -990,7 +987,7 @@ int main(int argc, char **argv)
 	int num_flows = 0;
 	int loop_count = 1;
 	char neighbor_conf_filename[MAX_PATH] = "neighbors.conf";
-	
+
 	int i;
 
 	ip_version = 4;
@@ -1008,8 +1005,9 @@ int main(int argc, char **argv)
 
 	/* Argument parsing. */
 
+	mode = UNSET;
 	for (i = 1; i < argc; i += 2) {
-        if (!strcmp(argv[i], "-i")) {
+		if (!strcmp(argv[i], "-i")) {
 			int ifindex = -1;
 			int j;
 
@@ -1027,7 +1025,7 @@ int main(int argc, char **argv)
 					ifindex = j;
 
 			if (ifindex == -1) {
-				fprintf(stderr, "device %s does not exist!\n", 
+				fprintf(stderr, "device %s does not exist!\n",
 						argv[i + 1]);
 				exit(1);
 			}
@@ -1041,76 +1039,84 @@ int main(int argc, char **argv)
 
 			devices_registered[num_devices_registered] = ifindex;
 			num_devices_registered ++;
-		} 
-		/// pcap_replaying
-        else if (!strcmp(argv[i], "--loop")) {
-			pcap_looping = true;
-            if ( !mode_pcap_replaying || mode_pkt_gen)
-               print_usage(argv[0]); 
+		/* Replay-mode only options. */
+		} else if (!strcmp(argv[i], "--repeat")) {
+			if (mode == UNSET || mode == TRACE_REPLAY) {
+				repeat_trace = true;
+				mode = TRACE_REPLAY;
+			} else {
+				fprintf(stderr, "Trace mode options are exclusive to pktgen mode options.\n");
+				print_usage(argv[0]);
+			}
 			i--;
-		} else if (!strcmp(argv[i], "--pcap")) {
-            if (mode_pkt_gen)
-               print_usage(argv[0]); 
-			mode_pcap_replaying = true;
-			strncpy(pcap_filename, argv[i + 1], MAX_PATH);
-			assert((strnlen(pcap_filename, MAX_PATH) > 0));
-		///
+		} else if (!strcmp(argv[i], "--trace")) {
+			if (mode == UNSET || mode == TRACE_REPLAY) {
+				strncpy(pcap_filename, argv[i + 1], MAX_PATH);
+				assert((strnlen(pcap_filename, MAX_PATH) > 0));
+				mode = TRACE_REPLAY;
+			} else {
+				fprintf(stderr, "Trace mode options are exclusive to pktgen mode options.\n");
+				print_usage(argv[0]);
+			}
+		/* Mode-agnostic options. */
+		} else if (!strcmp(argv[i], "--debug")) {
+			debug = true;
+			i--;
 		} else {
-            if (mode_pcap_replaying == true) {
-                fprintf(stderr, "Currently some options can't be used with pcap replaying mode. Check usage.\n");
-                print_usage(argv[0]);
-            }
-            mode_pkt_gen = true;
- 
-            if (!strcmp(argv[i], "-n")) {
-                num_packets = atoi(argv[i + 1]);
-                assert(num_packets >= 0);
-                if (num_packets < num_cpus / num_devices)
-                    fprintf(stderr, "WARNING: Too few packets would not utilize some interfaces.\n");
-            } else if (!strcmp(argv[i], "-s")) {
-                chunk_size = atoi(argv[i + 1]);
-                assert(chunk_size >= 1 && chunk_size <= PS_MAX_CHUNK_SIZE);
-            } else if (!strcmp(argv[i], "-p")) {
-                packet_size = atoi(argv[i + 1]);
-                min_packet_size = packet_size;
-                assert(packet_size >= 60 && packet_size <= 1514);
-            } else if (!strcmp(argv[i], "--min-pkt-size")) {
-                min_packet_size = atoi(argv[i + 1]);
-                assert(min_packet_size >= 60 && min_packet_size <= packet_size);
-            } else if (!strcmp(argv[i], "-f")) {
-                num_flows = atoi(argv[i + 1]);
-                assert(num_flows >= 0 && num_flows <= MAX_FLOWS);
-            } else if (!strcmp(argv[i], "-r")) {
-                randomize_flows = atoi(argv[i + 1]);
-                assert(randomize_flows == false || randomize_flows == true);
-            } else if (!strcmp(argv[i], "-v")) {
-                ip_version = atoi(argv[i + 1]);
-                assert(ip_version == 4 || ip_version == 6);
-            } else if (!strcmp(argv[i], "-l")) {
-                latency_measure = atoi(argv[i + 1]);
-                assert(latency_measure == 0 || latency_measure == 1);
-                if (latency_measure)
-                    magic_number = (uint32_t)ps_rdtsc();
-            } else if (!strcmp(argv[i], "-c")) {
-                loop_count = atoi(argv[i + 1]);
-                assert(loop_count >= 1);
-            } else if (!strcmp(argv[i], "-t")) {
-                time_limit = atoi(argv[i + 1]);
-                assert(time_limit >= 0);
-            } else if (!strcmp(argv[i], "-g")) {
-                offered_throughput = atof(argv[i + 1]);
-                assert(offered_throughput > 0);
-            } else if (!strcmp(argv[i], "--debug")) {
-                debug = true;
-                i--;
-            } else if (!strcmp(argv[i], "--neighbor-conf")) {
-                strncpy(neighbor_conf_filename, argv[i + 1], MAX_PATH);
-                assert(strnlen(neighbor_conf_filename, MAX_PATH) > 0);
-            } else { 
-                print_usage(argv[0]);
-            }
-        }
+			/* Pktgen-mode only options. */
+			if (!(mode == UNSET || mode == PKTGEN)) {
+				fprintf(stderr, "Trace mode options are exclusive to pktgen mode options.\n");
+				print_usage(argv[0]);
+			}
+			mode = PKTGEN;
+			if (!strcmp(argv[i], "-n")) {
+				num_packets = atoi(argv[i + 1]);
+				assert(num_packets >= 0);
+				if (num_packets < num_cpus / num_devices)
+					fprintf(stderr, "WARNING: Too few packets would not utilize some interfaces.\n");
+			} else if (!strcmp(argv[i], "-s")) {
+				chunk_size = atoi(argv[i + 1]);
+				assert(chunk_size >= 1 && chunk_size <= PS_MAX_CHUNK_SIZE);
+			} else if (!strcmp(argv[i], "-p")) {
+				packet_size = atoi(argv[i + 1]);
+				min_packet_size = packet_size;
+				assert(packet_size >= 60 && packet_size <= 1514);
+			} else if (!strcmp(argv[i], "--min-pkt-size")) {
+				min_packet_size = atoi(argv[i + 1]);
+				assert(min_packet_size >= 60 && min_packet_size <= packet_size);
+			} else if (!strcmp(argv[i], "-f")) {
+				num_flows = atoi(argv[i + 1]);
+				assert(num_flows >= 0 && num_flows <= MAX_FLOWS);
+			} else if (!strcmp(argv[i], "-r")) {
+				randomize_flows = atoi(argv[i + 1]);
+				assert(randomize_flows == false || randomize_flows == true);
+			} else if (!strcmp(argv[i], "-v")) {
+				ip_version = atoi(argv[i + 1]);
+				assert(ip_version == 4 || ip_version == 6);
+			} else if (!strcmp(argv[i], "-l")) {
+				latency_measure = atoi(argv[i + 1]);
+				assert(latency_measure == 0 || latency_measure == 1);
+				if (latency_measure)
+					magic_number = (uint32_t)ps_rdtsc();
+			} else if (!strcmp(argv[i], "-c")) {
+				loop_count = atoi(argv[i + 1]);
+				assert(loop_count >= 1);
+			} else if (!strcmp(argv[i], "-t")) {
+				time_limit = atoi(argv[i + 1]);
+				assert(time_limit >= 0);
+			} else if (!strcmp(argv[i], "-g")) {
+				offered_throughput = atof(argv[i + 1]);
+				assert(offered_throughput > 0);
+			} else if (!strcmp(argv[i], "--neighbor-conf")) {
+				strncpy(neighbor_conf_filename, argv[i + 1], MAX_PATH);
+				assert(strnlen(neighbor_conf_filename, MAX_PATH) > 0);
+			} else {
+				print_usage(argv[0]);
+			}
+		}
 	}
+	if (mode == UNSET)
+		print_usage(argv[0]);
 
 	if (!randomize_flows && num_flows == 0) {
 		fprintf(stderr, "Number of flows must be specified when you use -r option (non-random dest address).\n");
@@ -1168,11 +1174,11 @@ int main(int argc, char **argv)
 	assert(num_neighbors >= num_devices_registered);
 
 	/// pcap_replaying: whole pcap file is allocated to memory & indexed before replaying starts
-	if (mode_pcap_replaying) {
+	if (mode == TRACE_REPLAY) {
 		preprocess_pcap_file();
 	}
 	///
- 
+
 	/* Show the configuration. */
 
 	printf("# of CPUs = %d\n", num_cpus);
@@ -1195,7 +1201,7 @@ int main(int argc, char **argv)
 		printf("%s", devices[devices_registered[i]].name);
 	}
 	printf("\n");
-	
+
 	printf("----------\n");
 
 	/* Fork and send packets. */
@@ -1230,19 +1236,17 @@ int main(int argc, char **argv)
 			break;
 	}
 
-	/// pcap_replaying
-	if (mode_pcap_replaying) {
+	if (mode == TRACE_REPLAY) {
 		if (pcap_alloc_file != 0) {
 			free(pcap_alloc_file);
 			pcap_alloc_file = 0;
 		}
 	}
-	///
 
 	assert(gettimeofday(&end, NULL) == 0);
 
 	printf("----------\n");
-	printf("%.2f seconds elapsed\n", 
+	printf("%.2f seconds elapsed\n",
 			((end.tv_sec - begin.tv_sec) * 1000000 +
 			 (end.tv_usec - begin.tv_usec))
 			/ 1000000.0);
