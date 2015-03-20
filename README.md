@@ -11,6 +11,8 @@ See more details at [the homepage for Packet I/O Engine](http://shader.kaist.edu
 We are no longer actively managing this project as we have migrated our base to Intel DPDK.
 However, we are still looking forward to your pull requests and issue reports.
 
+For those who continue to use the packet generator (pspgen), please consider using [pspgen-dpdk](https://github.com/ANLAB-KAIST/pspgen-dpdk) instead.
+
 ## Contributors
 
  * Sangjin Han
