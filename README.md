@@ -1,17 +1,15 @@
 # Packet I/O Engine
 
-Packet I/O Engine is a high-performance batching-oriented device driver for Intel 82598/82599-based network interface cards.
+Packet I/O Engine is a high-performance batch-oriented device driver for Intel 82598/82599-based network interface cards.
 This program is based on Intel IXGBE driver (version 2.0.38.2), but heavily modified for throughput-oriented user-level applications.
-The modifications include batch processing, huge packet buffer, aggressive software prefetch, etc.
+The modifications include batch processing, huge packet buffer, aggressive software prefetch, and etc.
 
 See more details at [the homepage for Packet I/O Engine](http://shader.kaist.edu/packetshader/io_engine/index.html) and [the homepage for PacketShader](http://shader.kaist.edu/packetshader/index.html).
 
 ## Notice
 
-Currently this project is mainly maintained by Joongi Kim.
-However, our responses to new issues will be delayed for a while since he is doing an internship in Microsoft Research until February 2013.
-It is difficult to actively debug and improve the code in the meanwhile.
-We appreciate all the emails and issue reports you have sent to us, but we're sorry that we could not promptly reply to you.
+We are no longer actively managing this project as we have migrated our base to Intel DPDK.
+However, we are still looking forward to your pull requests and issue reports.
 
 ## Contributors
 
