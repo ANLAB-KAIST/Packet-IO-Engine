@@ -6,12 +6,14 @@ The modifications include batch processing, huge packet buffer, aggressive softw
 
 See more details at [the homepage for Packet I/O Engine](http://shader.kaist.edu/packetshader/io_engine/index.html) and [the homepage for PacketShader](http://shader.kaist.edu/packetshader/index.html).
 
-## Notice
+## Notice && Archived
 
 We are no longer actively managing this project as we have migrated our base to Intel DPDK.
 However, we are still looking forward to your pull requests and issue reports.
 
 For those who continue to use the packet generator (pspgen), please consider using [pspgen-dpdk](https://github.com/ANLAB-KAIST/pspgen-dpdk) instead.
+
+This project is now archived for preservation and latest implementations are available on DPDK and NBA.
 
 ## Contributors
 
